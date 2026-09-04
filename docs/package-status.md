@@ -60,3 +60,19 @@ The uConsole's Compute Module uses Broadcom VideoCore, so the driver stack is
 `mesa` plus `vulkan-broadcom`, driven by the `v3d` kernel driver. Do **not**
 install `freedreno` or `turnip`; those target Qualcomm Adreno and are irrelevant
 here. Hardware acceleration works out of the box once `v3d` is bound.
+
+## Build results (2026-09-04, CM4 Rev 1.1)
+
+All of Omarchy's own tools built from `omacom/omarchy-pkgs` on aarch64:
+
+`herdr`, `cliamp`, `omacalc`, `omawrite`, `omacut`, `tensaku`, `mise-bin`,
+`aether`, plus `ttfx`, `omarchy-nvim`, `tobi-try`, `yay`, `tzupdate`,
+`ttf-ia-writer` earlier.
+
+Also built: `lla` (cargo), the SDR repo toolkit, `meshtastic` and `PyGPSClient`
+(pipx).
+
+Failed, all benign:
+- `ttf-jetbrains-mono-nerd-basic` — conflicts with the full nerd font already installed
+- `yaru-icon-theme` — needs `gtk-engine-murrine`, no ARM package (GTK2 theme engine)
+- `sdrpp-git` — PKGBUILD is x86_64 only; use `gqrx` instead
