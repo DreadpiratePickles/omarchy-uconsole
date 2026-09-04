@@ -1,0 +1,10 @@
+# Omarchy environment for login shells (SSH, TTY) before anything else runs.
+[ -r /usr/share/omarchy/default/bash/env-bootstrap ] && \
+  emulate sh -c "source /usr/share/omarchy/default/bash/env-bootstrap"
+
+# Start the Omarchy Hyprland session on the first console only.
+# This is the zsh equivalent of the old ~/.bash_profile block. zsh never reads
+# .bash_profile, so without this the machine autologins to a bare console.
+if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR == 1 ]]; then
+  exec Hyprland &> ~/.local/share/hyprland-session.log
+fi
