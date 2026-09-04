@@ -1,0 +1,71 @@
+# Basic Raspberry Pi Compute Module / uConsole boot settings
+arm_64bit=1
+disable_overscan=1
+
+[cm4]
+# Kernel
+kernel=vmlinuz-linux-uconsole-cm4-git
+initramfs initramfs-linux-uconsole-cm4-git.img followkernel
+
+# ClockworkPi uConsole CM4 hardware overlay
+dtoverlay=clockworkpi-uconsole-cm4
+
+# Pi 4 / CM4 KMS display driver
+dtoverlay=vc4-kms-v3d-pi4,cma-384
+
+# uConsole CM4: UART is commonly enabled for CM4-based setups
+enable_uart=1
+
+# Audio mappings
+dtparam=audio=on
+dtoverlay=audremap,pins_12_13
+
+
+# --- AIO V2 expansion board ---
+# Real time clock (PCF85063A) so the system keeps time without a network.
+dtparam=i2c_arm=on
+dtoverlay=i2c-rtc,pcf85063a
+# SPI1 for the LoRa (SX1262) radio. CS is GPIO18, leaving GPIO16 free as the
+# LoRa power-enable line that aiov2_ctl drives.
+dtoverlay=spi1-1cs
+
+
+[cm5]
+# Kernel
+kernel=vmlinuz-linux-uconsole-cm5-git
+initramfs initramfs-linux-uconsole-cm5-git.img followkernel
+
+# ClockworkPi uConsole CM5 hardware overlay
+dtoverlay=clockworkpi-uconsole-cm5
+
+# Pi 5 / CM5 KMS display driver
+dtoverlay=vc4-kms-v3d-pi5,cma-384
+
+# uConsole CM5: avoid PCIe-related conflicts unless explicitly using PCIe/NVMe
+dtparam=pciex1=off
+
+# On CM5 this is usually unnecessary
+enable_uart=0
+
+# USB port current limit increase for Pi 5 / CM5
+usb_max_current_enable=1
+
+# Audio mappings
+dtparam=audio=on
+dtoverlay=audremap-pi5,pins_12_13
+
+
+[all]
+# USB host mode for uConsole internal/external USB path
+dtoverlay=dwc2,dr_mode=host
+
+# Use external antenna on Raspberry Pi CM U.FL connector
+dtparam=ant2
+
+# Headphone detect input
+# GPIO 10 is used by uConsole audio hardware to detect headphone plug state.
+gpio=10=ip,np
+
+# Speaker amplifier
+# Uncomment the following line to enable the speaker amplifier by default at boot.
+# gpio=11=op,dh
