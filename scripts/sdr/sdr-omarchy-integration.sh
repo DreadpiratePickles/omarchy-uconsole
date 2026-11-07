@@ -5,7 +5,7 @@
 #   - an "SDR" submenu in the Omarchy menu containing every SDR command, plus
 #     AIO power-rail toggles
 #   - SUPER + R (Alt + R on the uConsole keyboard) opens that menu
-# Needs aio-run, sdr-launch, sdr-tool and meshtastic-ui in /usr/local/bin.
+# Needs aio-run, sdr-launch, sdr-tool, gps-map and meshtastic-ui in /usr/local/bin.
 # Run as the desktop user (not root). Safe to re-run.
 set -euo pipefail
 
@@ -54,6 +54,7 @@ have inspectrum && desktop inspectrum "Inspectrum" "inspectrum" audio-x-generic 
 have "$HOME/.local/bin/pygpsclient" && desktop pygpsclient "PyGPSClient" "aio-run GPS -- $HOME/.local/bin/pygpsclient" find-location "GPS/GNSS status (powers the GPS)"
 have kismet && desktop kismet-web "Kismet Web UI" "omarchy-launch-webapp http://localhost:2501" network-wireless "Kismet web interface (start Kismet Server first)"
 have kismet && desktop kismet-server "Kismet Server" "kismet" network-wireless "Wireless monitor" TUI.tile
+have gps-map && desktop gps-map "GPS Map" "sdr-launch gps-map GPS -- gps-map" find-location "Live position on OpenStreetMap (powers the GPS)"
 have cgps && desktop gps-status "GPS Status" "aio-run GPS -- cgps -s" find-location "Live GPS fix (powers the GPS)" TUI.float
 have aiov2_ctl && desktop aio-power "AIO Power Monitor" "aiov2_ctl --watch" battery "AIO V2 rails and power draw" TUI.float
 if have sdr-tool; then
@@ -126,6 +127,7 @@ mkdir -p "$HOME/.config/omarchy/extensions"
   gui ham.gpredict "$I_HAM" "Gpredict satellites"    "gpredict"
 
   sub gps "$I_GPS" "GPS"
+  gui gps.map         "$I_GPS" "GPS map"       "sdr-launch gps-map GPS -- gps-map" gps-map
   tui gps.cgps        "$I_GPS" "GPS status"    "aio-run GPS -- cgps -s" cgps
   gui gps.pygpsclient "$I_GPS" "PyGPSClient"   "aio-run GPS -- $HOME/.local/bin/pygpsclient" "$HOME/.local/bin/pygpsclient"
   gui gps.xgps        "$I_GPS" "xgps"          "sdr-launch xgps GPS -- xgps"

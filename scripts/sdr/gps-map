@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""gps-map: live GPS position on an OpenStreetMap, for the uConsole AIO V2.
+
+Reads gpsd (localhost:2947), serves a small Leaflet page on 127.0.0.1, and
+opens it in its own Chromium app window. The map follows the fix and a panel
+shows satellites seen/used, signal strength and fix quality, so you can see
+progress while it is still searching. Closing the window ends the program.
+
+Run it under aio-run (or sdr-launch) so the GPS rail is powered:
+    sdr-launch gps-map GPS -- gps-map
+Map tiles come from tile.openstreetmap.org and Leaflet from unpkg, so the map
+itself needs a network connection; position and satellite data do not.
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+STATE = {"tpv": {}, "sky": {}, "device": "", "gpsd": False, "updated": 0}
+LOCK = threading.Lock()
+
+
+def gpsd_reader():
+    while True:
+        try:
+            with socket.create_connection(("127.0.0.1", 2947), timeout=10) as s:
+                s.sendall(b'?WATCH={"enable":true,"json":true};\n')
+                buf = b""
+                with LOCK:
+                    STATE["gpsd"] = True
+                while True:
+                    chunk = s.recv(65536)
+                    if not chunk:
+                        break
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        try:
+                            msg = json.loads(line)
+                        except ValueError:
+                            continue
+                        cls = msg.get("class")
+                        with LOCK:
+                            if cls == "TPV":
+                                STATE["tpv"] = msg
+                            elif cls == "SKY" and "satellites" in msg:
+                                STATE["sky"] = msg
+                            elif cls == "DEVICES" and msg.get("devices"):
+                                STATE["device"] = msg["devices"][0].get("driver", "")
+                            STATE["updated"] = time.time()
+        except OSError:
+            pass
+        with LOCK:
+            STATE["gpsd"] = False
+        time.sleep(2)
+
+
+PAGE = r"""<!doctype html>
+<html><head><meta charset="utf-8"><title>GPS Map</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+ html,body,#map{height:100%;margin:0;background:#1a1b26}
+ #panel{position:absolute;z-index:1000;top:8px;right:8px;background:rgba(26,27,38,.88);
+  color:#c0caf5;font:13px/1.35 monospace;padding:8px 10px;border-radius:6px;min-width:210px}
+ #panel b{color:#7aa2f7} .bad{color:#f7768e} .ok{color:#9ece6a} .warn{color:#e0af68}
+ #bars{display:flex;gap:2px;align-items:flex-end;height:34px;margin-top:4px}
+ #bars div{width:7px;background:#565f89} #bars div.u{background:#9ece6a}
+ #btn{margin-top:6px;font:12px monospace;background:#414868;color:#c0caf5;border:0;padding:3px 8px;border-radius:4px}
+</style></head><body>
+<div id="map"></div>
+<div id="panel">
+ <div><b>Fix:</b> <span id="fix" class="bad">searching…</span></div>
+ <div><b>Sats:</b> <span id="sats">–</span></div>
+ <div id="pos"></div>
+ <div id="bars"></div>
+ <button id="btn">follow: on</button>
+</div>
+<script>
+const map = L.map('map', {zoomControl:false}).setView([39.5,-98.35], 4);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(map);
+let marker=null, circle=null, follow=true, first=true, trail=L.polyline([], {color:'#7aa2f7'}).addTo(map);
+document.getElementById('btn').onclick = () => {
+  follow=!follow; document.getElementById('btn').textContent='follow: '+(follow?'on':'off'); };
+map.on('dragstart', () => { follow=false; document.getElementById('btn').textContent='follow: off'; });
+async function tick(){
+  try{
+    const s = await (await fetch('/state')).json();
+    const t = s.tpv||{}, sky=s.sky||{}, sats=sky.satellites||[];
+    const used = sats.filter(x=>x.used).length;
+    const mode = t.mode||0, fe=document.getElementById('fix');
+    if(!s.gpsd){ fe.textContent='gpsd not reachable'; fe.className='bad'; }
+    else if(mode>=2 && t.lat!==undefined){ fe.textContent=(mode==3?'3D':'2D')+' fix'; fe.className='ok'; }
+    else { fe.textContent = sats.length ? 'searching… (need sky view)' : 'no satellites heard (go outside / near a window)'; fe.className='warn'; }
+    document.getElementById('sats').textContent = used+' used / '+sats.length+' seen';
+    document.getElementById('bars').innerHTML = sats.sort((a,b)=>(b.ss||0)-(a.ss||0)).slice(0,20)
+      .map(x=>`<div class="${x.used?'u':''}" title="PRN ${x.PRN} ${x.ss} dB" style="height:${Math.max(2,Math.min(34,(x.ss||0)*0.75))}px"></div>`).join('');
+    if(mode>=2 && t.lat!==undefined){
+      const ll=[t.lat,t.lon], acc=Math.max(t.eph||t.epx||10, 5);
+      if(!marker){ marker=L.circleMarker(ll,{radius:7,color:'#fff',weight:2,fillColor:'#7aa2f7',fillOpacity:1}).addTo(map);
+                   circle=L.circle(ll,{radius:acc,color:'#7aa2f7',weight:1,fillOpacity:.12}).addTo(map); }
+      marker.setLatLng(ll); circle.setLatLng(ll); circle.setRadius(acc); trail.addLatLng(ll);
+      if(first){ map.setView(ll,16); first=false; } else if(follow){ map.panTo(ll); }
+      document.getElementById('pos').innerHTML =
+        `${t.lat.toFixed(6)}, ${t.lon.toFixed(6)}<br>±${acc.toFixed(0)} m`+
+        (t.altHAE!==undefined?` · alt ${t.altHAE.toFixed(0)} m`:'')+
+        (t.speed!==undefined?` · ${(t.speed*3.6).toFixed(1)} km/h`:'');
+    }
+  }catch(e){}
+  setTimeout(tick, 1000);
+}
+tick();
+</script></body></html>
+"""
+
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        if self.path == "/state":
+            with LOCK:
+                body = json.dumps(STATE).encode()
+            ctype = "application/json"
+        elif self.path in ("/", "/index.html"):
+            body, ctype = PAGE.encode(), "text/html; charset=utf-8"
+        else:
+            self.send_error(404)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+def main():
+    threading.Thread(target=gpsd_reader, daemon=True).start()
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{port}/"
+    if "--no-browser" in sys.argv:
+        print(url, flush=True)
+        threading.Event().wait()
+    profile = os.path.expanduser("~/.local/share/gps-map-web")
+    # A dedicated profile makes this window its own process, so we exit
+    # (and aio-run powers the GPS down) when it is closed.
+    rc = subprocess.call(["chromium", f"--user-data-dir={profile}", "--no-first-run",
+                          "--no-default-browser-check", f"--app={url}"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    srv.shutdown()
+    sys.exit(rc)
+
+
+if __name__ == "__main__":
+    main()

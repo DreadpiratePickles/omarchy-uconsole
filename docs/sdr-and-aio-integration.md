@@ -406,7 +406,7 @@ SDR
 ├─ Decoders         ADS-B aircraft · APRS packets · ISM sensors (rtl_433) · Pagers
 ├─ Analyse & build  Universal Radio Hacker · GNU Radio Companion · Inspectrum
 ├─ Ham radio        CHIRP · Gpredict
-├─ GPS              GPS status · PyGPSClient · xgps · Viking maps
+├─ GPS              GPS map · GPS status · PyGPSClient · xgps · Viking maps
 ├─ Meshtastic       Open Meshtastic · Meshtastic CLI · Keep node running ✓
 ├─ Wireless         Kismet server · Kismet web UI · Wireshark
 └─ AIO power        SDR ✓ · GPS ✓ · LORA ✓ · USB ✓ · All radios off · Power monitor · SDR self test
@@ -451,6 +451,19 @@ station from noise. Indoors, for example, FM stations measured +7 to +28 dB and
 every NOAA channel stayed within 6 dB of the floor, so nothing was being
 received.
 
+### gps-map: live position on a map
+
+Viking can follow gpsd, but only after right-clicking its GPS layer and choosing
+*Start Realtime Tracking* every session, which is awkward on a 5" screen.
+[`scripts/sdr/gps-map`](../scripts/sdr/gps-map) is a ~150-line Python program. It
+reads gpsd, serves a Leaflet/OpenStreetMap page on `127.0.0.1`, and opens it in
+its own Chromium app window. The map follows the fix and draws a trail. A panel
+shows fix type, satellites used/seen, a signal-strength bar per satellite, and
+accuracy, so you can watch it acquire instead of staring at a blank map. Closing
+the window exits, and `sdr-launch`/`aio-run` power the GPS down. Tiles need a
+network; position does not. Indoors, the AIO V2 GPS typically hears 0–3
+satellites and gets no fix. It needs a window or open sky.
+
 ### meshtastic-ui: one-click Meshtastic
 
 [`scripts/sdr/meshtastic-ui`](../scripts/sdr/meshtastic-ui) starts
@@ -470,7 +483,7 @@ Notes:
 ### Install
 
 ```bash
-sudo install -m755 scripts/sdr/{aio-run,sdr-launch,sdr-tool,meshtastic-ui} /usr/local/bin/
+sudo install -m755 scripts/sdr/{aio-run,sdr-launch,sdr-tool,gps-map,meshtastic-ui} /usr/local/bin/
 pipx install "pyModeS<3"
 bash scripts/sdr/sdr-omarchy-integration.sh      # as the desktop user
 ```
