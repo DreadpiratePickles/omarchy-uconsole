@@ -30,24 +30,15 @@ pipx install PyGPSClient
 shows you the bitstream, and helps you work out the encoding — the job you would
 otherwise take to a much bigger machine.
 
-## SDR++ does not build on ARM
+## SDR++, CHIRP, gpredict, direwolf and meshtasticd
 
-The obvious choice, and the one the AIO vendor forks as `sdrpp-brown`, is not
-installable here. The AUR `sdrpp-git` PKGBUILD declares `x86_64` only:
+These do build on aarch64. The AUR `sdrpp-git` recipe only *declares* `x86_64`.
+See [sdr-and-aio-integration.md](sdr-and-aio-integration.md#3-sdr-apps-that-do-build-on-aarch64)
+for an aarch64 SDR++ PKGBUILD, the AUR recipes that work as-is, and the yaml-cpp
+shim `meshtasticd-bin` needs. `dump1090_rs` is in the ALARM repos.
 
-```
-==> ERROR: sdrpp-git is not available for the 'aarch64' architecture.
-```
-
-`gqrx` covers the same receiver role. If you specifically want SDR++, you would
-have to patch the PKGBUILD's `arch` array and fix whatever the build then hits,
-which upstream has not done for a reason.
-
-## Not available for aarch64
-
-No official ARM packages: `chirp`, `fldigi`, `wsjtx`, `js8call`, `gpredict`,
-`welle.io`, `csdr`, `dump1090`. Some have AUR recipes that build; none ship a
-binary.
+Still without an ARM build: `fldigi`, `wsjtx`, `js8call`, `welle.io`, `csdr`,
+and SDRangel (its dependencies `log4cpp` and `qt5-websockets` are not packaged).
 
 ## Remember the rails are off at boot
 

@@ -1,0 +1,71 @@
+# Arch limesuite rebuilt for the CM4. The ALARM aarch64 build contains
+# ARMv8.3 instructions (ldapr) that the Cortex-A72 cannot execute: anything that
+# loads it (every SoapySDR app, at device enumeration) dies with SIGILL.
+# GUI, Octave plugin, API docs and LimeQuickTest are disabled to keep the build
+# short on the device.
+# Maintainer: Filipe Laíns (FFY00) <lains@archlinux.org>
+
+pkgname=limesuite
+pkgver=23.11.0
+pkgrel=10
+pkgdesc='Driver and GUI for LMS7002M-based SDR platforms (LimeSDR, etc.)'
+arch=(aarch64)
+url='https://github.com/myriadrf/LimeSuite'
+license=('Apache-2.0')
+depends=('sqlite3' 'wxwidgets-gtk3' 'freeglut' 'libusb' 'soapysdr' 'wget' 'gnuplot' 'glew' 'fltk')
+makedepends=(cmake)
+optdepends=()
+provides=('soapylms7')
+conflicts=('soapylms7')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha512sums=('0f96f92952af4470d5a9cc407c2d25348123876eab8d589371ad6105f9871dfe6e2317e634509bfd950ffb9ae30338e6fc7936ad9030c1119be442080a5174e7')
+
+prepare() {
+  cd LimeSuite-$pkgver
+
+  sed -i 's|MODE="660", GROUP="plugdev"|MODE="666"|g' udev-rules/64-limesuite.rules
+}
+
+build() {
+  mkdir -p LimeSuite-$pkgver/build
+  cd LimeSuite-$pkgver/build
+
+  CFLAGS+=" -std=gnu17" \
+  cmake .. \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DENABLE_UTILITIES=True \
+    -DENABLE_LIME_UTIL=True \
+    -DCMAKE_SKIP_RPATH=True \
+    -DENABLE_DESKTOP=False \
+    -DENABLE_SOAPY_LMS7=True \
+    -DENABLE_PCIE_XILLYBUS=True \
+    -DENABLE_QUICKTEST=False \
+    -DENABLE_MCU_TESTBENCH=True \
+    -DENABLE_FTDI=True \
+    -DENABLE_FX3=True \
+    -DENABLE_STREAM_UNITE=True \
+    -DENABLE_EXAMPLES=True \
+    -DENABLE_HEADERS=True \
+    -DENABLE_GUI=False \
+    -DENABLE_OCTAVE=False \
+    -DENABLE_API_DOXYGEN=False \
+    -DLIME_SUITE_EXTVER=$pkgver \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+#    -DENABLE_EVB7COM=True \
+#    -DENABLE_REMOTE=True \
+
+  make -j3
+}
+
+package() {
+  cd LimeSuite-$pkgver/build
+
+  make DESTDIR="$pkgdir" install
+
+  # Install udev rules
+  install -Dm 644 ../udev-rules/64-limesuite.rules "$pkgdir"/etc/udev/rules.d/64-limesuite.rules
+
+}
+

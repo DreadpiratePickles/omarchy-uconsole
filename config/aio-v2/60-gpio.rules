@@ -1,0 +1,7 @@
+# Let members of the "gpio" group drive GPIO without root, so pinctrl and
+# aiov2_ctl work (and report real rail state) as a normal user.
+# Install to /etc/udev/rules.d/, then:
+#   sudo groupadd -r gpio && sudo usermod -aG gpio $USER
+SUBSYSTEM=="bcm2835-gpiomem", GROUP="gpio", MODE="0660"
+KERNEL=="gpiomem*", GROUP="gpio", MODE="0660"
+SUBSYSTEM=="gpio", KERNEL=="gpiochip*", GROUP="gpio", MODE="0660"

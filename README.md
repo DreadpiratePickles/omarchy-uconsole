@@ -449,6 +449,19 @@ clock problem from Step 6.
 
 ---
 
+## SDR toolkit and Omarchy integration
+
+[docs/sdr-and-aio-integration.md](docs/sdr-and-aio-integration.md) covers the
+rest of a complete SDR build:
+- two clock faults that survive setting the RTC;
+- GPIO without root;
+- SDR++, CHIRP and meshtasticd on aarch64;
+- an Omarchy SDR menu with AIO power toggles on Alt + R;
+- the agent CLIs (Claude Code, Codex, gh) via mise;
+- building the whole card offline.
+
+---
+
 ## Credits
 
 - [wdkdot/uconsole-arch](https://github.com/wdkdot/uconsole-arch) — the base image and kernel packaging

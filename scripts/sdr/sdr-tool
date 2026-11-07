@@ -1,0 +1,62 @@
+#!/bin/bash
+# sdr-tool: terminal SDR jobs for the AIO V2's RTL-SDR. Each powers the SDR
+# rail only while it runs (via aio-run). Meant to be opened from the Omarchy
+# SDR menu (Alt + R) in a terminal, but works from any shell.
+#
+#   sdr-tool adsb            aircraft table (dump1090_rs + pyModeS modeslive)
+#   sdr-tool aprs [MHz]      APRS packets via direwolf   (default 144.39)
+#   sdr-tool ism             433/915 MHz sensors via rtl_433
+#   sdr-tool pager [MHz]     POCSAG/FLEX pagers via multimon-ng (asks for MHz)
+#   sdr-tool fm [MHz]        listen to broadcast FM       (asks for MHz)
+#   sdr-tool noaa [MHz]      listen to NOAA weather radio (default 162.55)
+#   sdr-tool test            rtl_test sanity check
+set -u
+PATH="$HOME/.local/bin:$PATH"
+cmd=${1:-}; shift || true
+
+ask() { # prompt default
+  local v
+  if command -v gum >/dev/null; then v=$(gum input --prompt "$1 " --value "$2"); else read -rp "$1 [$2] " v; fi
+  echo "${v:-$2}"
+}
+pause() { echo; read -rsn1 -p "Press any key to close"; }
+PLAY="play -q -t raw -r 48k -e signed -b 16 -c 1 -"
+
+case $cmd in
+  adsb)
+    aio-run SDR -- bash -c '
+      dump1090_rs >/dev/null 2>&1 & d=$!
+      trap "kill $d 2>/dev/null" EXIT
+      for _ in $(seq 20); do (exec 3<>/dev/tcp/127.0.0.1/30002) 2>/dev/null && break; sleep 0.5; done
+      modeslive --source net --connect localhost 30002 raw'
+    ;;
+  aprs)
+    f=${1:-144.39}
+    echo "APRS on $f MHz (receive only). Ctrl+C to stop."
+    aio-run SDR -- bash -c "rtl_fm -f ${f}M -s 22050 -g 40 - 2>/dev/null | direwolf -c \$HOME/.config/direwolf/sdr-rx.conf -r 22050 -t 1 -"
+    pause ;;
+  ism)
+    aio-run SDR -- rtl_433 "$@"
+    pause ;;
+  pager)
+    f=${1:-$(ask "Pager frequency (MHz):" 152.84)}
+    echo "Decoding POCSAG/FLEX on $f MHz. Ctrl+C to stop."
+    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M fm -s 22050 -g 40 - 2>/dev/null | multimon-ng -t raw -a POCSAG512 -a POCSAG1200 -a POCSAG2400 -a FLEX -f alpha -"
+    pause ;;
+  fm)
+    f=${1:-$(ask "FM station (MHz):" 98.5)}
+    echo "Playing $f MHz. Ctrl+C to stop."
+    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M wbfm -s 200000 -r 48000 - 2>/dev/null | $PLAY 2>/dev/null"
+    ;;
+  noaa)
+    f=${1:-162.55}
+    echo "NOAA weather radio on $f MHz. Ctrl+C to stop."
+    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M fm -s 48000 -r 48000 -g 40 - 2>/dev/null | $PLAY 2>/dev/null"
+    ;;
+  test)
+    aio-run SDR -- timeout 10 rtl_test -t
+    pause ;;
+  *)
+    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    exit 2 ;;
+esac

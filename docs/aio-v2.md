@@ -124,4 +124,9 @@ satellites means the receiver is working and just needs sky.
 sudo usermod -aG uucp,rtlsdr alarm
 ```
 
-There is no `gpio` group on Arch, so `pinctrl` still needs sudo.
+There is no `gpio` group on Arch by default, so `pinctrl` needs sudo. You can
+add one with a udev rule; see
+[sdr-and-aio-integration.md](sdr-and-aio-integration.md#2-gpio-without-root).
+
+If `/dev/rtc0` is missing after boot, or the clock never syncs over the network,
+see [the clock section](sdr-and-aio-integration.md#1-clock-two-problems-that-keep-it-wrong).

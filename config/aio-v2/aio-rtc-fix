@@ -1,0 +1,9 @@
+#!/bin/sh
+# AIO V2 PCF85063A: the driver can probe before the chip answers ("RTC chip is
+# not present", -EREMOTEIO). Retry the bind, then load the system clock from it.
+# Install to /usr/local/bin/aio-rtc-fix (mode 755).
+[ -e /dev/rtc0 ] || for i in 1 2 3 4 5; do
+  echo 1-0051 > /sys/bus/i2c/drivers/rtc-pcf85063/bind 2>/dev/null
+  [ -e /dev/rtc0 ] && break; sleep 1
+done
+[ -e /dev/rtc0 ] && hwclock -s --rtc=/dev/rtc0

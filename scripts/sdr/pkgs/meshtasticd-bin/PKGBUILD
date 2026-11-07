@@ -1,0 +1,57 @@
+# Maintainer (AUR original): killab33z <killab33z @ protonmail-dot-ch>
+# Repackages the upstream Debian 13 build of meshtasticd. Unlike the AUR
+# recipe this keeps everything the .deb ships (start script, udev rule, the
+# bundled Meshtastic web client) and replaces the Debian postinst with
+# sysusers.d/tmpfiles.d, so the service's 'meshtasticd' user actually exists.
+pkgname=meshtasticd-bin
+_pkgname=meshtasticd
+_buildcode='obs54e0d8d'
+pkgver=2.7.26.61
+pkgrel=3
+pkgdesc='Meshtastic daemon for Linux systems (with web client).'
+url='https://download.opensuse.org/repositories/network:/Meshtastic:/beta/Debian_13'
+arch=('x86_64' 'aarch64')
+license=('GPL-3.0-only')
+# The Debian binary links libyaml-cpp.so.0.8; Arch ships 0.9.
+depends=('i2c-tools' 'libgpiod' 'ulfius' 'yaml-cpp08-compat')
+conflicts=("$_pkgname" "$_pkgname-git")
+provides=("$_pkgname")
+backup=('etc/meshtasticd/config.yaml')
+source_x86_64=("$url/amd64/meshtasticd_$pkgver~$_buildcode~beta_amd64.deb")
+sha512sums_x86_64=('76acbd5715f6453874718a7bb0abecc07997ccf9b24cf1e9dea7577dbd64bbecf8b841eb53148a92251231df08dbae18d8dadb1ddf227f290ac1372eb72f3bca')
+source_aarch64=("$url/arm64/meshtasticd_$pkgver~$_buildcode~beta_arm64.deb")
+sha512sums_aarch64=('c427d9d3ea85adb68131696ffc7f55fbb207fa3b51efc4d3e2c0ee033c512f2e755f7fbafad8a2860a5a8bfc64d1ca4e6b07e7218da4e184cfa17bd7547581a0')
+
+prepare() {
+  mkdir -p data
+  bsdtar -xf "$srcdir/data.tar.xz" -C data
+}
+
+package() {
+  cd data
+  install -Dm755 usr/bin/meshtasticd            "$pkgdir/usr/bin/meshtasticd"
+  install -Dm755 usr/bin/meshtasticd-start.sh   "$pkgdir/usr/bin/meshtasticd-start.sh"
+  install -Dm644 lib/systemd/system/meshtasticd.service \
+                 "$pkgdir/usr/lib/systemd/system/meshtasticd.service"
+  install -Dm644 usr/lib/udev/rules.d/60-meshtasticd.rules \
+                 "$pkgdir/usr/lib/udev/rules.d/60-meshtasticd.rules"
+  install -d "$pkgdir/usr/share/meshtasticd"
+  cp -r usr/share/meshtasticd/web "$pkgdir/usr/share/meshtasticd/"
+  install -d "$pkgdir/etc/meshtasticd"
+  cp -r etc/meshtasticd/. "$pkgdir/etc/meshtasticd/"
+  install -d "$pkgdir/etc/meshtasticd/config.d" "$pkgdir/etc/meshtasticd/ssl"
+
+  # Debian postinst equivalent: user, groups, state dir, ownership.
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/sysusers.d/meshtasticd.conf" <<'EOF'
+g spi - -
+g gpio - -
+u meshtasticd - "Meshtastic daemon" /var/lib/meshtasticd
+m meshtasticd spi
+m meshtasticd gpio
+m meshtasticd uucp
+EOF
+  install -Dm644 /dev/stdin "$pkgdir/usr/lib/tmpfiles.d/meshtasticd.conf" <<'EOF'
+d /var/lib/meshtasticd 0750 meshtasticd meshtasticd -
+Z /etc/meshtasticd - meshtasticd meshtasticd -
+EOF
+}

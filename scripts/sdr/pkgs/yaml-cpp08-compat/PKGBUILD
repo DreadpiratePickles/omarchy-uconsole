@@ -1,0 +1,35 @@
+# Runtime-only yaml-cpp 0.8 shared library for meshtasticd, whose binary is
+# built on Debian 13 against libyaml-cpp.so.0.8. Arch ships 0.9; this installs
+# only the versioned 0.8 .so (no headers, no unversioned symlink), so it
+# cannot conflict with the system yaml-cpp.
+pkgname=yaml-cpp08-compat
+pkgver=0.8.0
+pkgrel=1
+pkgdesc="yaml-cpp 0.8 runtime library (compat for prebuilt meshtasticd)"
+arch=(aarch64)
+url="https://github.com/jbeder/yaml-cpp"
+license=(MIT)
+depends=(gcc-libs glibc)
+makedepends=(cmake)
+source=("yaml-cpp-${pkgver}.tar.gz::https://github.com/jbeder/yaml-cpp/archive/refs/tags/${pkgver}.tar.gz")
+sha256sums=('fbe74bbdcee21d656715688706da3c8becfd946d92cd44705cc6098bb23b3a16')
+
+build() {
+	# 0.8.0 predates GCC 13's stricter <cstdint> transitive includes.
+	CXXFLAGS+=" -include cstdint"
+	cmake -B build -S "yaml-cpp-${pkgver}" \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DYAML_BUILD_SHARED_LIBS=ON \
+		-DYAML_CPP_BUILD_TESTS=OFF \
+		-DYAML_CPP_BUILD_TOOLS=OFF \
+		-DYAML_CPP_BUILD_CONTRIB=OFF \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5
+	make -C build -j"$(nproc)"
+}
+
+package() {
+	install -d "${pkgdir}/usr/lib"
+	cp -P build/libyaml-cpp.so.0.8* "${pkgdir}/usr/lib/"
+	install -Dm644 "yaml-cpp-${pkgver}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

@@ -1,0 +1,13 @@
+# Install to /etc/systemd/system/, then: sudo systemctl enable aio-rtc-fix
+[Unit]
+Description=AIO V2 RTC: retry probe and set system clock
+After=systemd-modules-load.service
+Before=time-sync.target systemd-timesyncd.service
+Wants=time-sync.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aio-rtc-fix
+
+[Install]
+WantedBy=sysinit.target
