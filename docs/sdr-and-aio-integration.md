@@ -188,6 +188,22 @@ printf '#!/bin/sh\nexec env LD_PRELOAD=/usr/local/lib/libglycin-warmup.so /usr/b
   | sudo install -m755 /dev/stdin /usr/local/bin/viking
 ```
 
+### No sound from the speaker
+
+The uConsole's speaker amplifier is enabled by **GPIO11**, and the base image
+ships with that line commented out in `/boot/config.txt`. Audio plays happily into
+PipeWire (bcm2835 analog, routed to GPIO 12/13 by `audremap`), but nothing comes
+out. GPIO10 is the headphone-detect input.
+
+```bash
+sudo pinctrl set 11 op dh                                     # now
+sudo sed -i 's/^# gpio=11=op,dh$/gpio=11=op,dh/' /boot/config.txt   # every boot
+```
+
+The ALSA `PCM` control on card 0 also defaults to about −20 dB under PipeWire's
+own volume. Set it to 0 dB and save it with `amixer -c 0 sset PCM 0dB` and
+`sudo alsactl store`.
+
 ### Smaller ones
 
 | Symptom | Fix |
@@ -456,6 +472,7 @@ The rail state was read before and after.
 | Viking, xgps, PyGPSClient, cgps | yes | GPS | yes |
 | Inspectrum, CHIRP, Gpredict, Wireshark | yes | none needed | n/a |
 | ADS-B, APRS, rtl_433, pagers, FM, NOAA, self test | terminal | SDR | yes |
+| Speaker (test tone, FM) | audible after GPIO11 fix | SDR for FM | yes |
 | Meshtastic web client | yes (7 s) | LoRa (via meshtasticd) | yes, node stopped |
 | Kismet | web UI on :2501 | none | n/a |
 
