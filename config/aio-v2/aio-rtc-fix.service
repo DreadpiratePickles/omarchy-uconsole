@@ -1,12 +1,18 @@
 # Install to /etc/systemd/system/, then: sudo systemctl enable aio-rtc-fix
+# Early-boot unit: DefaultDependencies=no is required, otherwise it is ordered
+# after sysinit.target while being wanted by it, and systemd breaks the cycle by
+# dropping systemd-timesyncd from the boot transaction.
 [Unit]
 Description=AIO V2 RTC: retry probe and set system clock
-After=systemd-modules-load.service
-Before=time-sync.target systemd-timesyncd.service
-Wants=time-sync.target
+DefaultDependencies=no
+After=systemd-modules-load.service systemd-udevd.service
+Before=time-set.target sysinit.target shutdown.target
+Wants=time-set.target
+Conflicts=shutdown.target
 
 [Service]
 Type=oneshot
+RemainAfterExit=yes
 ExecStart=/usr/local/bin/aio-rtc-fix
 
 [Install]

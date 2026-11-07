@@ -60,7 +60,12 @@ echo 1-0051 | sudo tee /sys/bus/i2c/drivers/rtc-pcf85063/bind
 On a chip that has never been set, the first successful bind logs `POR issue
 detected, sending a SW reset`. That is expected. A small oneshot service retries
 the bind when `/dev/rtc0` is missing, then sets the system clock from the RTC
-before `time-sync.target`:
+before `time-set.target`. It is an early-boot unit, so it needs
+`DefaultDependencies=no`. Without that, it creates an ordering cycle, and systemd
+quietly drops `systemd-timesyncd` from the boot to break it. If you see
+`Job systemd-timesyncd.service/start deleted to break ordering cycle`, this is
+the cause.
+
 
 ```bash
 sudo install -m755 config/aio-v2/aio-rtc-fix /usr/local/bin/
