@@ -1,62 +1,125 @@
 #!/bin/bash
-# sdr-tool: terminal SDR jobs for the AIO V2's RTL-SDR. Each powers the SDR
-# rail only while it runs (via aio-run). Meant to be opened from the Omarchy
-# SDR menu (Alt + R) in a terminal, but works from any shell.
+# sdr-tool: terminal SDR jobs for the AIO V2's RTL-SDR. Each job powers the
+# SDR rail for exactly as long as it runs (it re-runs itself under aio-run).
+# Opened from the Omarchy SDR menu (Alt + R) in a terminal; works from any shell.
 #
+#   sdr-tool fm [MHz]        broadcast FM; with no MHz, scan and pick a station
+#   sdr-tool noaa [MHz]      NOAA weather radio; with no MHz, tune the strongest
+#                            channel if any is actually being received
 #   sdr-tool adsb            aircraft table (dump1090_rs + pyModeS modeslive)
-#   sdr-tool aprs [MHz]      APRS packets via direwolf   (default 144.39)
+#   sdr-tool aprs [MHz]      APRS packets via direwolf, receive only (144.39)
 #   sdr-tool ism             433/915 MHz sensors via rtl_433
-#   sdr-tool pager [MHz]     POCSAG/FLEX pagers via multimon-ng (asks for MHz)
-#   sdr-tool fm [MHz]        listen to broadcast FM       (asks for MHz)
-#   sdr-tool noaa [MHz]      listen to NOAA weather radio (default 162.55)
+#   sdr-tool pager [MHz]     POCSAG/FLEX pagers via multimon-ng
+#   sdr-tool scan LO HI      list signals between LO and HI MHz
 #   sdr-tool test            rtl_test sanity check
 set -u
 PATH="$HOME/.local/bin:$PATH"
 cmd=${1:-}; shift || true
 
+case $cmd in fm|noaa|adsb|aprs|ism|pager|scan|test) ;; *)
+  sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+esac
+
+# Re-run under aio-run so the SDR stays powered for the whole job (scan + play).
+if [[ -z ${SDR_TOOL_POWERED:-} ]]; then
+  SDR_TOOL_POWERED=1 aio-run SDR -- "$0" "$cmd" "$@"
+  status=$?
+  case $cmd in fm|noaa|adsb) ;; *) echo; read -rsn1 -p "Press any key to close" ;; esac
+  exit $status
+fi
+
+PLAY=(play -q -t raw -r 48k -e signed -b 16 -c 1 -)
 ask() { # prompt default
   local v
   if command -v gum >/dev/null; then v=$(gum input --prompt "$1 " --value "$2"); else read -rp "$1 [$2] " v; fi
   echo "${v:-$2}"
 }
-pause() { echo; read -rsn1 -p "Press any key to close"; }
-PLAY="play -q -t raw -r 48k -e signed -b 16 -c 1 -"
+
+# scan LO HI BIN GAIN SECS -> lines "MHz dB-above-floor", strongest first, peaks
+# at least MINDB above the band median and SEP kHz apart
+scan() {
+  local lo=$1 hi=$2 bin=$3 gain=$4 secs=$5 mindb=${6:-6} sep=${7:-300}
+  rtl_power -f "${lo}M:${hi}M:${bin}" -g "$gain" -i "$secs" -1 2>/dev/null |
+  python3 -c '
+import sys, statistics
+mindb, sep = float(sys.argv[1]), float(sys.argv[2]) * 1e3
+pts = []
+for line in sys.stdin:
+    a = [x.strip() for x in line.split(",")]
+    if len(a) < 7: continue
+    lo, step = float(a[2]), float(a[4])
+    pts += [(lo + i * step, float(v)) for i, v in enumerate(a[6:])]
+if not pts: sys.exit(1)
+floor = statistics.median(v for _, v in pts)
+out = []
+for f, v in sorted(pts, key=lambda p: -p[1]):
+    if v - floor < mindb: break
+    if all(abs(f - g) > sep for g, _ in out): out.append((f, v))
+for f, v in out: print("%.3f %.1f" % (f / 1e6, v - floor))
+' "$mindb" "$sep"
+}
 
 case $cmd in
+  fm)
+    f=${1:-}
+    if [[ -z $f ]]; then
+      echo "Scanning the FM band..."
+      mapfile -t st < <(scan 87.9 108 100k 30 3 6 300 | head -15)
+      if (( ${#st[@]} == 0 )); then
+        echo "No stations found. Check the SDR antenna."; f=$(ask "FM station (MHz):" 98.5)
+      else
+        rows=(); for s in "${st[@]}"; do read -r mhz db <<<"$s"; rows+=("$(printf '%.1f MHz   (+%s dB)' "$mhz" "${db%.*}")"); done
+        pick=$(printf '%s\n' "${rows[@]}" | sort -n | gum choose --header "Stations heard (strongest is +dB highest)") || exit 0
+        f=${pick%% MHz*}
+      fi
+    fi
+    echo "Playing $f MHz. Ctrl+C to stop."
+    rtl_fm -f "${f}M" -M wbfm -s 200000 -r 48000 - 2>/dev/null | "${PLAY[@]}" 2>/dev/null
+    ;;
+  noaa)
+    f=${1:-}
+    if [[ -z $f ]]; then
+      echo "Measuring the seven NOAA weather channels..."
+      best=$(scan 162.30 162.65 2.5k 40 6 10 20 |
+        awk '{ for (c = 162.400; c <= 162.5501; c += 0.025) if ($1 > c - 0.006 && $1 < c + 0.006) { printf "%.3f %s\n", c, $2; exit } }')
+      if [[ -n $best ]]; then
+        read -r f db <<<"$best"; echo "Strongest station: $f MHz (+${db%.*} dB above noise)."
+      else
+        echo "No NOAA station is coming in strongly enough here (none is 10 dB above"
+        echo "the noise). Try near a window or outdoors, with the antenna vertical."
+        read -rp "Listen to 162.550 MHz anyway? [y/N] " a; [[ $a == [yY]* ]] || exit 0
+        f=162.550
+      fi
+    fi
+    echo "NOAA weather radio on $f MHz. Ctrl+C to stop."
+    rtl_fm -f "${f}M" -M fm -s 48000 -r 48000 -g 40 - 2>/dev/null | "${PLAY[@]}" 2>/dev/null
+    ;;
   adsb)
-    aio-run SDR -- bash -c '
-      dump1090_rs >/dev/null 2>&1 & d=$!
-      trap "kill $d 2>/dev/null" EXIT
-      for _ in $(seq 20); do (exec 3<>/dev/tcp/127.0.0.1/30002) 2>/dev/null && break; sleep 0.5; done
-      modeslive --source net --connect localhost 30002 raw'
+    dump1090_rs >/dev/null 2>&1 & d=$!
+    trap 'kill $d 2>/dev/null' EXIT
+    for _ in $(seq 20); do (exec 3<>/dev/tcp/127.0.0.1/30002) 2>/dev/null && break; sleep 0.5; done
+    modeslive --source net --connect localhost 30002 raw
     ;;
   aprs)
     f=${1:-144.39}
     echo "APRS on $f MHz (receive only). Ctrl+C to stop."
-    aio-run SDR -- bash -c "rtl_fm -f ${f}M -s 22050 -g 40 - 2>/dev/null | direwolf -c \$HOME/.config/direwolf/sdr-rx.conf -r 22050 -t 1 -"
-    pause ;;
+    rtl_fm -f "${f}M" -s 22050 -g 40 - 2>/dev/null | direwolf -c "$HOME/.config/direwolf/sdr-rx.conf" -r 22050 -t 1 -
+    ;;
   ism)
-    aio-run SDR -- rtl_433 "$@"
-    pause ;;
+    rtl_433 "$@"
+    ;;
   pager)
     f=${1:-$(ask "Pager frequency (MHz):" 152.84)}
     echo "Decoding POCSAG/FLEX on $f MHz. Ctrl+C to stop."
-    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M fm -s 22050 -g 40 - 2>/dev/null | multimon-ng -t raw -a POCSAG512 -a POCSAG1200 -a POCSAG2400 -a FLEX -f alpha -"
-    pause ;;
-  fm)
-    f=${1:-$(ask "FM station (MHz):" 98.5)}
-    echo "Playing $f MHz. Ctrl+C to stop."
-    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M wbfm -s 200000 -r 48000 - 2>/dev/null | $PLAY 2>/dev/null"
+    rtl_fm -f "${f}M" -M fm -s 22050 -g 40 - 2>/dev/null |
+      multimon-ng -t raw -a POCSAG512 -a POCSAG1200 -a POCSAG2400 -a FLEX -f alpha -
     ;;
-  noaa)
-    f=${1:-162.55}
-    echo "NOAA weather radio on $f MHz. Ctrl+C to stop."
-    aio-run SDR -- bash -c "rtl_fm -f ${f}M -M fm -s 48000 -r 48000 -g 40 - 2>/dev/null | $PLAY 2>/dev/null"
+  scan)
+    lo=${1:-$(ask "From (MHz):" 144)}; hi=${2:-$(ask "To (MHz):" 148)}
+    echo "Signals between $lo and $hi MHz (dB above the noise floor):"
+    scan "$lo" "$hi" 10k 30 4 8 25 | head -25 | awk '{ printf "  %10.3f MHz  +%s dB\n", $1, $2 }'
     ;;
   test)
-    aio-run SDR -- timeout 10 rtl_test -t
-    pause ;;
-  *)
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
-    exit 2 ;;
+    timeout 10 rtl_test -t
+    ;;
 esac

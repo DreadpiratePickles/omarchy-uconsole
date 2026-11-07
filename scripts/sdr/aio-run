@@ -3,6 +3,7 @@
 #
 #   aio-run SDR -- gqrx
 #   aio-run SDR,GPS -- direwolf ...
+#   aio-run --reap     switch off rails that aio-run turned on and nothing holds
 #
 # Rails are reference counted per user session, so two apps sharing the SDR do
 # not cut each other off. A rail that was already on before the first aio-run
@@ -14,12 +15,7 @@ declare -A PIN=([SDR]=7 [GPS]=27 [LORA]=16 [USB]=23)
 STATE="${XDG_RUNTIME_DIR:-/tmp/aio-run-$UID}/aio-rails"
 mkdir -p "$STATE"
 
-usage() { echo "usage: aio-run RAIL[,RAIL...] -- command [args...]" >&2; exit 2; }
-[[ $# -ge 3 && $2 == -- ]] || usage
-IFS=, read -ra RAILS <<<"${1^^}"
-shift 2
-for r in "${RAILS[@]}"; do [[ -n ${PIN[$r]:-} ]] || usage; done
-
+usage() { echo "usage: aio-run RAIL[,RAIL...] -- command [args...] | aio-run --reap" >&2; exit 2; }
 is_on() { pinctrl get "${PIN[$1]}" 2>/dev/null | grep -q '| hi'; }
 notify() { command -v omarchy-notification-send >/dev/null && omarchy-notification-send "$@" >/dev/null 2>&1 || true; }
 
@@ -33,6 +29,29 @@ holders() {
   done
   echo "$n"
 }
+
+# Safety net: if an aio-run was killed before it could clean up (for example
+# its whole app scope was torn down when the window closed), its rail is left
+# on with no holder. Reaping switches such rails off. Runs at every start and
+# from aio-reap.timer.
+reap() {
+  (
+    flock 9
+    local r
+    for r in "${!PIN[@]}"; do
+      if [[ -f $STATE/$r.restore && $(holders "$r") -eq 0 ]]; then
+        aiov2_ctl "$r" off >/dev/null
+        rm -f "$STATE/$r.restore"
+      fi
+    done
+  ) 9>"$STATE/.lock"
+}
+
+if [[ ${1:-} == --reap ]]; then reap; exit 0; fi
+[[ $# -ge 3 && $2 == -- ]] || usage
+IFS=, read -ra RAILS <<<"${1^^}"
+shift 2
+for r in "${RAILS[@]}"; do [[ -n ${PIN[$r]:-} ]] || usage; done
 
 acquire() {
   local r=$1
@@ -70,6 +89,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP
 
+reap
 for r in "${RAILS[@]}"; do acquire "$r"; done
 
 # wait for the hardware to appear

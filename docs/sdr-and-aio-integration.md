@@ -325,7 +325,18 @@ aio-run GPS -- cgps -s
 ```
 
 It switches the rails on, waits for the hardware (the RTL-SDR appearing on USB),
-runs the app, and switches the rails off when the app exits. Rails are
+runs the app, and switches the rails off when the app exits.
+
+Closing a terminal window can tear down the whole app scope, which kills
+`aio-run` before it finishes cleaning up and leaves the radio powered. As a safety
+net, `aio-run --reap` switches off any rail that aio-run turned on and that no
+running process holds. It runs at the start of every `aio-run`, and once a minute
+from a user timer:
+
+```bash
+cp config/aio-v2/aio-reap.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now aio-reap.timer
+``` Rails are
 **reference counted** per session, so two apps sharing the SDR do not cut each
 other off. A rail that was already on before the first `aio-run` claimed it
 (turned on by hand, or a boot default) is left on.
@@ -385,14 +396,23 @@ Omarchy's own `xdg-terminal-exec --app-id=TUI.float|TUI.tile` convention.
 name and a sensible default:
 
 ```
+sdr-tool fm [MHz]        broadcast FM; with no MHz, scan the band and pick a station
+sdr-tool noaa [MHz]      NOAA weather radio; with no MHz, tune the strongest channel,
+                         or say so if none is 10 dB above the noise
 sdr-tool adsb            aircraft table (dump1090_rs + modeslive)
 sdr-tool aprs [MHz]      APRS packets via direwolf, receive only (144.39)
 sdr-tool ism             rtl_433
 sdr-tool pager [MHz]     POCSAG/FLEX via multimon-ng
-sdr-tool fm [MHz]        broadcast FM to the speaker
-sdr-tool noaa [MHz]      NOAA weather radio (162.55)
+sdr-tool scan LO HI      list signals between LO and HI MHz, in dB above the noise
 sdr-tool test            rtl_test
 ```
+
+Each job re-runs itself under `aio-run`, so the SDR stays powered across the
+scan and the playback and is switched off when the job ends. The scans use
+`rtl_power` and report each peak relative to the band's median, which tells a
+station from noise. Indoors, for example, FM stations measured +7 to +28 dB and
+every NOAA channel stayed within 6 dB of the floor, so nothing was being
+received.
 
 ### meshtastic-ui: one-click Meshtastic
 
