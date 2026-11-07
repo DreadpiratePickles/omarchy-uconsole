@@ -204,6 +204,27 @@ The ALSA `PCM` control on card 0 also defaults to about −20 dB under PipeWire'
 own volume. Set it to 0 dB and save it with `amixer -c 0 sset PCM 0dB` and
 `sudo alsactl store`.
 
+### SDR++ hangs on its splash screen ("Application Not Responding")
+
+SDR++'s default audio sink (`audio_sink`, RtAudio over ALSA) deadlocks at start-up
+on PipeWire's ALSA plugin. It calls `AudioSink::doStop()` → `snd_pcm_drain` on a
+stream that never started, and never returns. Switch the radio stream to the
+PortAudio sink ("New Audio") and disable the RtAudio one. While you are in
+`~/.config/sdrpp/`, also make it CM4-sized:
+
+| File | Setting |
+|---|---|
+| `config.json` | `moduleInstances."Audio Sink".enabled = false`; add `"New Audio Sink": {"enabled": true, "module": "new_portaudio_sink"}`; `streams.Radio.sink = "New Audio"` |
+| `config.json` | `fftSize` 65536 → 8192; `source = "RTL-SDR"`; disable source modules for hardware you do not have (about 20 of them), which cuts start-up time |
+| `rtl_sdr_config.json` | `sampleRate` 1024000, fixed `gain` |
+| `radio_config.json` | `selectedDemodId` 1 (WFM), `WFM.deempMode` `75us` in the Americas (the default `50us` is Europe) |
+
+Two copies of SDR++ wait on each other's config lock (`ConfigManager locked,
+waiting...`) and fight over the radio. The launchers therefore go through
+[`sdr-launch`](../scripts/sdr/sdr-launch), which focuses the running copy
+instead of starting another. Launch with `--autostart` to start receiving
+without pressing play.
+
 ### Smaller ones
 
 | Symptom | Fix |
@@ -391,7 +412,7 @@ SDR
 └─ AIO power        SDR ✓ · GPS ✓ · LORA ✓ · USB ✓ · All radios off · Power monitor · SDR self test
 ```
 
-Every hardware entry goes through `aio-run`, `sdr-tool` or `meshtastic-ui`, so
+Every hardware entry goes through `sdr-launch` (single instance + `aio-run`), `sdr-tool` or `meshtastic-ui`, so
 picking it powers the right radio and closing it powers the radio down. The power
 rows show a check mark when a rail is on, read live from `pinctrl`. Rows for apps
 that are not installed are hidden.
@@ -449,7 +470,7 @@ Notes:
 ### Install
 
 ```bash
-sudo install -m755 scripts/sdr/{aio-run,sdr-tool,meshtastic-ui} /usr/local/bin/
+sudo install -m755 scripts/sdr/{aio-run,sdr-launch,sdr-tool,meshtastic-ui} /usr/local/bin/
 pipx install "pyModeS<3"
 bash scripts/sdr/sdr-omarchy-integration.sh      # as the desktop user
 ```

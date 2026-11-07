@@ -5,7 +5,7 @@
 #   - an "SDR" submenu in the Omarchy menu containing every SDR command, plus
 #     AIO power-rail toggles
 #   - SUPER + R (Alt + R on the uConsole keyboard) opens that menu
-# Needs aio-run, sdr-tool and meshtastic-ui in /usr/local/bin.
+# Needs aio-run, sdr-launch, sdr-tool and meshtastic-ui in /usr/local/bin.
 # Run as the desktop user (not root). Safe to re-run.
 set -euo pipefail
 
@@ -16,21 +16,23 @@ have() { command -v "$1" >/dev/null 2>&1 || [[ -x $1 ]]; }
 # ---- 1. wrap the system launchers of hardware apps --------------------------
 # A copy in ~/.local/share/applications with the same name overrides the
 # system one; only the Exec lines change.
-wrap() { # desktop-file RAILS [env-prefix]
+wrap() { # desktop-file PROC RAILS — single instance, rails powered while running
   local src="/usr/share/applications/$1"
   [[ -f $src ]] || return 0
-  sed -E "s|^(Exec=)(.*)$|\1${3:+$3 }aio-run $2 -- \2|; /^TryExec=/d" "$src" > "$APPS/$1"
+  sed -E "s|^(Exec=)(.*)$|\1sdr-launch $2 $3 -- \2|; /^TryExec=/d" "$src" > "$APPS/$1"
 }
-wrap dk.gqrx.gqrx.desktop     SDR
-wrap sdrpp.desktop            SDR
-wrap SigDigger.desktop        SDR
-wrap gnuradio-grc.desktop     SDR
-wrap urh.desktop              SDR
-wrap xgps.desktop             GPS
-wrap xgpsspeed.desktop        GPS
+wrap dk.gqrx.gqrx.desktop     gqrx            SDR
+wrap sdrpp.desktop            sdrpp           SDR
+# start receiving as soon as SDR++ has loaded
+[[ -f $APPS/sdrpp.desktop ]] && sed -i -E "s|^(Exec=.*sdrpp)$|\1 --autostart|" "$APPS/sdrpp.desktop"
+wrap SigDigger.desktop        SigDigger       SDR
+wrap gnuradio-grc.desktop     gnuradio-compan SDR
+wrap urh.desktop              urh             SDR
+wrap xgps.desktop             xgps            GPS
+wrap xgpsspeed.desktop        xgpsspeed       GPS
 # Viking resolves to /usr/local/bin/viking, which preloads the glycin warm-up
 # shim (see glycin-warmup.c); without it Viking 1.11 hangs before its window.
-wrap viking.desktop           GPS
+wrap viking.desktop           viking          GPS
 # direwolf's own launcher starts it with no config; APRS lives in sdr-tool.
 [[ -f /usr/share/applications/direwolf.desktop ]] && \
   printf '[Desktop Entry]\nType=Application\nName=direwolf\nNoDisplay=true\n' > "$APPS/direwolf.desktop"
@@ -102,9 +104,9 @@ mkdir -p "$HOME/.config/omarchy/extensions"
   printf '  "sdr": {"icon":"%s","label":"SDR","aliases":["radio"],"description":"Radios, decoders, GPS, LoRa and AIO V2 power"},\n' "$I_SDR"
 
   sub receive "$I_RX" "Receivers"
-  gui receive.sdrpp     "$I_RX" "SDR++"                "aio-run SDR -- sdrpp"
-  gui receive.gqrx      "$I_RX" "Gqrx"                 "aio-run SDR -- gqrx"
-  gui receive.sigdigger "$I_RX" "SigDigger"            "aio-run SDR -- SigDigger"
+  gui receive.sdrpp     "$I_RX" "SDR++"                "sdr-launch sdrpp SDR -- sdrpp --autostart" sdrpp
+  gui receive.gqrx      "$I_RX" "Gqrx"                 "sdr-launch gqrx SDR -- gqrx"
+  gui receive.sigdigger "$I_RX" "SigDigger"            "sdr-launch SigDigger SDR -- SigDigger"
   tui receive.fm        "$I_RX" "FM radio"             "sdr-tool fm" sdr-tool
   tui receive.noaa      "$I_RX" "NOAA weather radio"   "sdr-tool noaa" sdr-tool
 
@@ -115,8 +117,8 @@ mkdir -p "$HOME/.config/omarchy/extensions"
   tui decode.pager "$I_DEC" "Pagers (POCSAG/FLEX)"   "sdr-tool pager" sdr-tool
 
   sub analyse "$I_AN" "Analyse & build"
-  gui analyse.urh        "$I_AN" "Universal Radio Hacker" "aio-run SDR -- urh"
-  gui analyse.grc        "$I_AN" "GNU Radio Companion"    "aio-run SDR -- gnuradio-companion"
+  gui analyse.urh        "$I_AN" "Universal Radio Hacker" "sdr-launch urh SDR -- urh"
+  gui analyse.grc        "$I_AN" "GNU Radio Companion"    "sdr-launch gnuradio-compan SDR -- gnuradio-companion"
   gui analyse.inspectrum "$I_AN" "Inspectrum (files)"     "inspectrum"
 
   sub ham "$I_HAM" "Ham radio"
@@ -126,8 +128,8 @@ mkdir -p "$HOME/.config/omarchy/extensions"
   sub gps "$I_GPS" "GPS"
   tui gps.cgps        "$I_GPS" "GPS status"    "aio-run GPS -- cgps -s" cgps
   gui gps.pygpsclient "$I_GPS" "PyGPSClient"   "aio-run GPS -- $HOME/.local/bin/pygpsclient" "$HOME/.local/bin/pygpsclient"
-  gui gps.xgps        "$I_GPS" "xgps"          "aio-run GPS -- xgps"
-  gui gps.viking      "$I_GPS" "Viking maps"   "aio-run GPS -- viking"
+  gui gps.xgps        "$I_GPS" "xgps"          "sdr-launch xgps GPS -- xgps"
+  gui gps.viking      "$I_GPS" "Viking maps"   "sdr-launch viking GPS -- viking"
 
   sub mesh "$I_MESH" "Meshtastic (LoRa)"
   row mesh.web  "$I_WEB"  "Open Meshtastic"     "meshtastic-ui" "command -v meshtastic-ui"
