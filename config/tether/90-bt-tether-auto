@@ -1,0 +1,6 @@
+#!/bin/sh
+# NetworkManager dispatcher hook: re-evaluate the Bluetooth tether on changes.
+# Install to /etc/NetworkManager/dispatcher.d/ (root-owned, mode 755).
+case "$2" in up|down|connectivity-change) ;; *) exit 0 ;; esac
+# Give a Wi-Fi roam/reconnect a moment before falling back to the phone.
+( sleep 8; /usr/local/bin/bt-tether-auto ) >/dev/null 2>&1 &

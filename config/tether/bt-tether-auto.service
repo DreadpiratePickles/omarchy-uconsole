@@ -1,0 +1,7 @@
+[Unit]
+Description=Use a paired phone's Bluetooth tether when no other network is up
+After=NetworkManager.service bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bt-tether-auto

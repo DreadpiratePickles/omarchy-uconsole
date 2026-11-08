@@ -588,3 +588,32 @@ aarch64 chroot on the card, under `qemu-user-static` with binfmt's `F` flag.
   `systemd-tmpfiles` catch up on the first real boot.
 - **Big C++ builds** (SDR++, LimeSuite) are faster on the CM4 itself after first
   boot than under emulation.
+
+## Phone tethering (iPhone/Android)
+
+The AIO V2 has no cellular modem, and ClockworkPi's 4G board needs the same
+expansion slot, so mobile data comes from a phone.
+
+- **Wi-Fi hotspot**: join it like any network. Nothing to install.
+- **USB**: the uConsole kernel ships `ipheth`. Install `usbmuxd`
+  (`libimobiledevice` is already there), plug the phone into a USB-A port
+  (the USB-C port is charge-only), unlock it and tap *Trust*.
+- **Bluetooth (automatic fallback)**: pair the phone once in `bluetui` with
+  Personal Hotspot open. `config/tether/bt-tether-auto` then picks any paired
+  phone offering Bluetooth NAP, creates a NetworkManager `panu` connection for
+  it, and brings it up only while no Wi-Fi/Ethernet/USB connection is active.
+  It drops the tether again as soon as Wi-Fi is back. It is run by a
+  NetworkManager dispatcher hook (`90-bt-tether-auto`) and by
+  `bt-tether-auto.timer` every minute, which catches a phone coming into range.
+  Throughput is low (tens of KB/s to a few Mbit/s), because the CM4's single
+  Wi-Fi/Bluetooth chip and the phone's cell signal both limit it.
+
+```sh
+sudo install -m755 config/tether/bt-tether-auto /usr/local/bin/
+sudo install -m755 config/tether/90-bt-tether-auto /etc/NetworkManager/dispatcher.d/
+sudo install -m644 config/tether/bt-tether-auto.{service,timer} /etc/systemd/system/
+sudo systemctl enable --now NetworkManager-dispatcher bt-tether-auto.timer
+```
+
+Tested: with the Wi-Fi radio off, the uConsole was online through the iPhone
+within about 10 s. With Wi-Fi back on, the tether was dropped within a minute.

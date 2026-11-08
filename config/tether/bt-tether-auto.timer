@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a phone to tether to every minute
+
+[Timer]
+OnBootSec=45
+OnUnitActiveSec=60
+AccuracySec=15
+
+[Install]
+WantedBy=timers.target

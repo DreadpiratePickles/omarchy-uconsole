@@ -1,0 +1,17 @@
+#!/bin/sh
+# The CM4's BCM4345 Bluetooth comes up with the chip's placeholder address
+# AA:AA:AA:AA:AA:AA when the firmware does not pass one in. Give it a unique
+# address derived from the Wi-Fi MAC (+1 on the last byte, as Raspberry Pi OS
+# does). Install to /usr/local/bin/bt-set-address (mode 755).
+cur=$(cat /sys/class/bluetooth/hci0/address 2>/dev/null)
+[ -n "$cur" ] || cur=$(btmgmt --index 0 info 2>/dev/null | awk '/addr /{print $2; exit}')
+case "$cur" in
+  [Aa][Aa]:[Aa][Aa]:[Aa][Aa]:[Aa][Aa]:[Aa][Aa]:[Aa][Aa]|"") ;;
+  *) exit 0 ;;   # already has a real address
+esac
+mac=$(cat /sys/class/net/wlan0/address) || exit 1
+last=$(( (0x${mac##*:} + 1) & 0xff ))
+addr=$(printf '%s:%02x' "${mac%:*}" "$last" | tr a-f A-F)
+btmgmt --index 0 power off >/dev/null
+btmgmt --index 0 public-addr "$addr"
+btmgmt --index 0 power on >/dev/null
