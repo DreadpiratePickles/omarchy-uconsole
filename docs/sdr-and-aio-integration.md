@@ -617,3 +617,40 @@ sudo systemctl enable --now NetworkManager-dispatcher bt-tether-auto.timer
 
 Tested: with the Wi-Fi radio off, the uConsole was online through the iPhone
 within about 10 s. With Wi-Fi back on, the tether was dropped within a minute.
+
+## More SDR apps: aircraft map, ships, weather satellites, network sharing
+
+None of these are packaged for aarch64, so they are built from source (all
+four build and run on the CM4):
+
+| App | Build | Launcher (Alt + R) |
+|---|---|---|
+| readsb + tar1090 | `git clone wiedehopf/readsb && make RTLSDR=yes`; copy `tar1090/html` to `/usr/local/share/tar1090/html` | **Decoders > ADS-B aircraft map** (`scripts/sdr/adsb-map`) |
+| AIS-catcher 0.70 | cmake, no extra deps | **Decoders > AIS ships map** (`scripts/sdr/ais-map`) |
+| SatDump 1.2.2 | cmake `-DBUILD_GUI=ON`, deps `libvolk fftw glfw jemalloc nng zstd portaudio boost lua54 ocl-icd hdf5`; about 3 h with `make -j2` (`-j3` risks running out of RAM on a 4 GB CM4) | **Decoders > SatDump weather satellites** |
+| rtl_tcp (in `rtl-sdr`) | already installed | **Receivers > Share SDR over network** (`sdr-tool share`) |
+
+- `adsb-map` runs readsb, writing JSON to a private runtime directory, and
+  serves tar1090 plus that JSON on 127.0.0.1 from a small Python server, so no
+  lighttpd or nginx is needed. It opens in its own Chromium app window and uses
+  the GPS position if gpsd already has a fix. Closing the window stops readsb,
+  and `aio-run` powers the SDR off. The AUR `readsb-git` is the
+  Mictronics/protobuf fork, which pulls in bladeRF, libiio and rrdtool, and
+  `tar1090-git` expects a dump1090 package; neither is needed here.
+- `ais-map` runs AIS-catcher's built-in web map with `IP_BIND 127.0.0.1` (by
+  default it listens on all interfaces) and `-X off`: **AIS-catcher shares
+  received data with aiscatcher.org by default.**
+- `sdr-tool share` runs `rtl_tcp -a 0.0.0.0 -p 1234` and prints the LAN and
+  Tailscale addresses to use with SDR++'s RTL-TCP source. It is unauthenticated,
+  so only run it on networks you trust.
+
+Tested: the aircraft map showed traffic over New York within 25 s; AIS-catcher
+started and served its map; an rtl_tcp client on another machine received the
+`RTL0` header (R820T, 29 gains) and a live sample stream. Each one powered the
+SDR on while running and off again afterwards.
+
+The uConsole's Omarchy git checkout does not install
+`/usr/share/omarchy/etc/sudoers.d/*` the way the `omarchy-settings` package
+does on x86. Without `omarchy-theme-browser`, every theme change asks for a
+password via pkexec (for `omarchy-theme-set-browser-policy`). Install those
+narrowly scoped rules with `sudo install -m440 /usr/share/omarchy/etc/sudoers.d/* /etc/sudoers.d/`.

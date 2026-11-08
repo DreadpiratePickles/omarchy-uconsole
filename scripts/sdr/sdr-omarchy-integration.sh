@@ -5,7 +5,8 @@
 #   - an "SDR" submenu in the Omarchy menu containing every SDR command, plus
 #     AIO power-rail toggles
 #   - SUPER + R (Alt + R on the uConsole keyboard) opens that menu
-# Needs aio-run, sdr-launch, sdr-tool, gps-map and meshtastic-ui in /usr/local/bin.
+# Needs aio-run, sdr-launch, sdr-tool, gps-map and meshtastic-ui in /usr/local/bin
+# (adsb-map, ais-map and satdump-ui are optional).
 # Run as the desktop user (not root). Safe to re-run.
 set -euo pipefail
 
@@ -55,6 +56,10 @@ have "$HOME/.local/bin/pygpsclient" && desktop pygpsclient "PyGPSClient" "aio-ru
 have kismet && desktop kismet-web "Kismet Web UI" "omarchy-launch-webapp http://localhost:2501" network-wireless "Kismet web interface (start Kismet Server first)"
 have kismet && desktop kismet-server "Kismet Server" "kismet" network-wireless "Wireless monitor" TUI.tile
 have gps-map && desktop gps-map "GPS Map" "sdr-launch gps-map GPS -- gps-map" find-location "Live position on OpenStreetMap (powers the GPS)"
+have adsb-map && desktop adsb-map "ADS-B Map" "sdr-launch adsb-map SDR -- adsb-map" airplane-mode-symbolic "Live aircraft map, readsb + tar1090 (powers the SDR)"
+have ais-map && desktop ais-map "AIS Ship Map" "sdr-launch ais-map SDR -- ais-map" find-location "Ships near you via AIS-catcher (powers the SDR)"
+# same basename as SatDump's own launcher, so this one (which powers the SDR) wins
+have satdump-ui && desktop satdump "SatDump" "sdr-launch satdump-ui SDR -- satdump-ui" weather-few-clouds "Weather satellite decoder (powers the SDR)"
 have cgps && desktop gps-status "GPS Status" "aio-run GPS -- cgps -s" find-location "Live GPS fix (powers the GPS)" TUI.float
 have aiov2_ctl && desktop aio-power "AIO Power Monitor" "aiov2_ctl --watch" battery "AIO V2 rails and power draw" TUI.float
 if have sdr-tool; then
@@ -64,6 +69,7 @@ if have sdr-tool; then
   desktop sdr-pager "Pager Decoder"      "sdr-tool pager" network-wireless "POCSAG/FLEX via multimon-ng (powers the SDR)" TUI.float
   desktop sdr-fm    "FM Radio"           "sdr-tool fm"    audio-x-generic "Broadcast FM (powers the SDR)" TUI.float
   desktop sdr-noaa  "NOAA Weather Radio" "sdr-tool noaa"  weather-showers "162.55 MHz weather radio (powers the SDR)" TUI.float
+  desktop sdr-share "Share SDR (rtl_tcp)" "sdr-tool share" network-wireless "Let SDR++/Gqrx on another computer use this radio (powers the SDR)" TUI.float
   desktop sdr-test  "SDR Self Test"      "sdr-tool test"  utilities-system-monitor "rtl_test (powers the SDR)" TUI.float
 fi
 if have meshtastic-ui; then
@@ -110,9 +116,13 @@ mkdir -p "$HOME/.config/omarchy/extensions"
   gui receive.sigdigger "$I_RX" "SigDigger"            "sdr-launch SigDigger SDR -- SigDigger"
   tui receive.fm        "$I_RX" "FM radio"             "sdr-tool fm" sdr-tool
   tui receive.noaa      "$I_RX" "NOAA weather radio"   "sdr-tool noaa" sdr-tool
+  tui receive.share     "$I_RX" "Share SDR over network" "sdr-tool share" sdr-tool
 
   sub decode "$I_DEC" "Decoders"
-  tui decode.adsb  "$I_DEC" "ADS-B aircraft"         "sdr-tool adsb" sdr-tool
+  gui decode.adsbmap "$I_DEC" "ADS-B aircraft map"   "sdr-launch adsb-map SDR -- adsb-map" adsb-map
+  tui decode.adsb  "$I_DEC" "ADS-B aircraft (text)"  "sdr-tool adsb" sdr-tool
+  gui decode.ais   "$I_DEC" "AIS ships map"          "sdr-launch ais-map SDR -- ais-map" ais-map
+  gui decode.satdump "$I_DEC" "SatDump weather satellites" "sdr-launch satdump-ui SDR -- satdump-ui" satdump-ui
   tui decode.aprs  "$I_DEC" "APRS packets"           "sdr-tool aprs" sdr-tool
   tui decode.ism   "$I_DEC" "ISM sensors (rtl_433)"  "sdr-tool ism" sdr-tool
   tui decode.pager "$I_DEC" "Pagers (POCSAG/FLEX)"   "sdr-tool pager" sdr-tool

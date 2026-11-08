@@ -1,0 +1,34 @@
+#!/bin/bash
+# ais-map: ships near you (AIS, 161.975/162.025 MHz) on a map, for the uConsole
+# AIO V2 SDR. Runs AIS-catcher with its built-in web map on 127.0.0.1 and opens
+# it in its own Chromium app window; closing the window stops AIS-catcher, and
+# aio-run then powers the SDR down. Uses the GPS position if gpsd has a fix.
+#   sdr-launch ais-map SDR -- ais-map        (--no-browser: just print the URL)
+# Community sharing to aiscatcher.org (on by default upstream) is turned off.
+# Install to /usr/local/bin/ais-map. Needs /usr/local/bin/AIS-catcher.
+set -u
+port=$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1])')
+
+web=(-N "$port" IP_BIND 127.0.0.1); loc=()
+if command -v gpspipe >/dev/null &&
+   fix=$(timeout 4 gpspipe -w -n 12 2>/dev/null | jq -r 'select(.class=="TPV" and (.mode//0)>=2 and .lat!=null) | "\(.lat) \(.lon)"' | head -1) &&
+   [[ -n $fix ]]; then
+  read -r lat lon <<<"$fix"
+  loc=(-Z "$lat" "$lon")
+fi
+
+AIS-catcher -q -X off "${loc[@]}" "${web[@]}" -gr TUNER auto RTLAGC on >/dev/null 2>&1 & ais=$!
+trap 'kill $ais 2>/dev/null; wait $ais 2>/dev/null' EXIT INT TERM HUP
+
+for _ in $(seq 40); do
+  kill -0 $ais 2>/dev/null || { echo "AIS-catcher exited (is the SDR in use?)" >&2; exit 1; }
+  (exec 3<>/dev/tcp/127.0.0.1/$port) 2>/dev/null && break
+  sleep 0.25
+done
+url="http://127.0.0.1:$port/"
+
+if [[ ${1:-} == --no-browser ]]; then
+  echo "$url"; wait $ais; exit
+fi
+chromium --user-data-dir="$HOME/.local/share/ais-map-web" --no-first-run \
+  --no-default-browser-check --app="$url" >/dev/null 2>&1
