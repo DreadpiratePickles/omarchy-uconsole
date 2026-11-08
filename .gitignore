@@ -1,3 +1,5 @@
 *.img
 *.img.zst
 *.pkg.tar.*
+cache/
+sdcard/build.log

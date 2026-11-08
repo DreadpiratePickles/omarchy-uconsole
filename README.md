@@ -13,6 +13,16 @@ Arch image that will stop you dead if you do not know about them.
 **Verified on:** uConsole with CM4 Rev 1.1 (4 GB), AIO V2 expansion board,
 kernel `7.1.4-uconsole-cm4+`, Hyprland 0.56.1, Quickshell 0.3.1.
 
+**Also verified (November 2026):** CM4 Lite with the AIO V2, built with
+[`sdcard/`](sdcard), kernel `7.1.13-uconsole-cm4+`, Omarchy `quattro` at `e6d5a17`,
+then updated with `omarchy update` ([docs/updating.md](docs/updating.md)):
+Hyprland 0.57.1 and Quickshell 0.3.2 from Omarchy's aarch64 repository.
+
+**Quickest route:** [`sdcard/`](sdcard) builds a ready-to-boot card from an x86
+Linux machine, doing steps 1-17, the AIO V2 setup and the SDR toolkit in one
+run. The steps below explain what it does and why. Agents: start with
+[AGENTS.md](AGENTS.md).
+
 ---
 
 ## Before you start
@@ -272,6 +282,15 @@ sudo pacman -S --needed chromium
 xdg-settings set default-web-browser chromium.desktop
 ```
 
+**Install Omarchy's systemd user units too.** The `omarchy` package copies
+`default/systemd/user/*` into `/usr/lib/systemd/user/`; a git checkout does not,
+and the first `omarchy update` then stops at a migration that restarts
+`omarchy-sleep-lock.service` ([docs/updating.md](docs/updating.md#2-migration-1785608166-repair-the-pre-suspend-lock-monitor)):
+
+```bash
+sudo cp -r /usr/share/omarchy/default/systemd/user/. /usr/lib/systemd/user/
+```
+
 ---
 
 ## Step 12: Panel rotation
@@ -356,10 +375,28 @@ non-interactive SSH.
 
 ## Step 16: Omarchy's own packages
 
-**This is the part most ports miss.** Omarchy publishes PKGBUILDs for all 123 of
-its packages at [omacom/omarchy-pkgs](https://github.com/omacom/omarchy-pkgs), and
-every tool you are "missing" already declares `aarch64` in its recipe. Upstream
-simply never publishes ARM binaries. They all build here.
+**This is the part most ports miss.** Omarchy now publishes aarch64 builds of
+its packages. Add its repository and signing key, and install them prebuilt:
+
+```bash
+key=40DFB630FF42BCFFB047046CF0134EE680CAC571
+curl -fsSL -o /tmp/omarchy.asc "https://keys.openpgp.org/vks/v1/by-fingerprint/$key"
+sudo pacman-key --add /tmp/omarchy.asc && sudo pacman-key --lsign-key "$key"
+printf '\n[omarchy]\nSigLevel = Required DatabaseOptional\nServer = https://pkgs.omarchy.org/edge/aarch64\n' \
+  | sudo tee -a /etc/pacman.conf
+sudo pacman -Sy
+sudo pacman -S --needed ttf-ia-writer yaru-icon-theme tobi-try omarchy-nvim yay ttfx \
+  tzupdate herdr cliamp omacalc omawrite omacut tensaku mise-bin aether
+```
+
+The first `omarchy update` moves `[omarchy]` ahead of the Arch Linux ARM
+repositories, as Omarchy expects
+([docs/updating.md](docs/updating.md#what-changes-after-the-first-update)).
+
+**Fallback:** before Omarchy published ARM builds, this guide compiled them from
+the PKGBUILDs at [omacom/omarchy-pkgs](https://github.com/omacom/omarchy-pkgs),
+which all declare `aarch64`. Note that this script deletes and re-clones
+`~/omarchy-pkgs`:
 
 ```bash
 ./scripts/build-omarchy-pkgs.sh
@@ -474,6 +511,16 @@ the desktop is running:
 - running `omarchy` and `hyprctl` commands over SSH;
 - restarting the shell after updating a bar plugin;
 - remote access with Tailscale.
+
+---
+
+## Updating
+
+Use `./scripts/update-omarchy.sh` on the uConsole. It pulls the Omarchy
+checkout, installs its systemd units, skips the Snapper migration that cannot
+work on ext4, and runs `omarchy update`.
+[docs/updating.md](docs/updating.md) covers the procedure, the three known
+blockers and their fixes, and what changes after the first update.
 
 ---
 
