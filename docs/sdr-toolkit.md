@@ -33,7 +33,7 @@ otherwise take to a much bigger machine.
 ## SDR++, CHIRP, gpredict, direwolf and meshtasticd
 
 These do build on aarch64. The AUR `sdrpp-git` recipe only *declares* `x86_64`.
-See [sdr-and-aio-integration.md](sdr-and-aio-integration.md#3-sdr-apps-that-do-build-on-aarch64)
+See [sdr-and-aio-integration.md](sdr-and-aio-integration.md#4-sdr-apps-that-do-build-on-aarch64)
 for an aarch64 SDR++ PKGBUILD, the AUR recipes that work as-is, and the yaml-cpp
 shim `meshtasticd-bin` needs. `dump1090_rs` is in the ALARM repos.
 
