@@ -627,7 +627,7 @@ four build and run on the CM4):
 |---|---|---|
 | readsb + tar1090 | `git clone wiedehopf/readsb && make RTLSDR=yes`; copy `tar1090/html` to `/usr/local/share/tar1090/html` | **Decoders > ADS-B aircraft map** (`scripts/sdr/adsb-map`) |
 | AIS-catcher 0.70 | cmake, no extra deps | **Decoders > AIS ships map** (`scripts/sdr/ais-map`) |
-| SatDump 1.2.2 | cmake `-DBUILD_GUI=ON`, deps `libvolk fftw glfw jemalloc nng zstd portaudio boost lua54 ocl-icd hdf5`; about 3 h with `make -j2` (`-j3` risks running out of RAM on a 4 GB CM4) | **Decoders > SatDump weather satellites** |
+| SatDump 1.2.2 | cmake `-DBUILD_GUI=ON -DCMAKE_INSTALL_PREFIX=/usr/local`, deps `libvolk fftw glfw jemalloc nng zstd portaudio boost lua54 ocl-icd hdf5`. Apply the AUR `satdump.patch` and build with `CPATH=/usr/include/lua5.4`, otherwise sol2 picks up the system Lua 5.5 headers and fails (`LUA_ERRGCMM`, `lua_newstate`). 1 h 22 min with `make -j2` (`-j3` risks running out of RAM on a 4 GB CM4) | **Decoders > SatDump weather satellites** |
 | rtl_tcp (in `rtl-sdr`) | already installed | **Receivers > Share SDR over network** (`sdr-tool share`) |
 
 - `adsb-map` runs readsb, writing JSON to a private runtime directory, and
@@ -640,6 +640,7 @@ four build and run on the CM4):
 - `ais-map` runs AIS-catcher's built-in web map with `IP_BIND 127.0.0.1` (by
   default it listens on all interfaces) and `-X off`: **AIS-catcher shares
   received data with aiscatcher.org by default.**
+- SatDump installs its libraries in `/usr/local/lib` and `/usr/local/lib/satdump/plugins`, which Arch's loader doesn't search. Add both to `/etc/ld.so.conf.d/usr-local.conf` and run `ldconfig`. `satdump sdr_probe` then lists the RTL-SDR.
 - `sdr-tool share` runs `rtl_tcp -a 0.0.0.0 -p 1234` and prints the LAN and
   Tailscale addresses to use with SDR++'s RTL-TCP source. It is unauthenticated,
   so only run it on networks you trust.
