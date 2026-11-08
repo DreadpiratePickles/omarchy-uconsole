@@ -1,0 +1,48 @@
+#!/bin/bash
+# aio-status: one-line JSON snapshot of the AIO V2 radio rails, for the
+# Omarchy bar widget (config/omarchy-plugin/aio-radios) and scripts.
+#   {"rails":[{"name":"SDR","on":true,"apps":["adsb-map"]},...],"watts":2.31,"charging":false}
+# "apps" are the programs holding the rail through aio-run. Cheap enough to
+# poll every few seconds: four pinctrl reads and a few small files.
+# Install to /usr/local/bin/aio-status.
+set -u
+STATE="${XDG_RUNTIME_DIR:-/tmp/aio-run-$UID}/aio-rails"
+declare -A PIN=([SDR]=7 [GPS]=27 [LORA]=16 [USB]=23)
+
+app_of() { # aio-run pid -> name of the program it runs
+  local c args
+  c=$(pgrep -P "$1" | head -1) || return
+  mapfile -d '' -t args < "/proc/$c/cmdline" 2>/dev/null || return
+  local a=${args[0]##*/}
+  # interpreters: report the script instead
+  if [[ $a =~ ^(python[0-9.]*|bash|sh|perl)$ && ${#args[@]} -gt 1 ]]; then a=${args[1]##*/}; fi
+  # sdr-tool re-runs itself; show its subcommand
+  [[ $a == sdr-tool ]] && a="sdr-tool ${args[2]:-${args[1]:-}}"
+  printf '%s' "$a"
+}
+
+out='{"rails":['
+sep=
+for r in SDR GPS LORA USB; do
+  on=false
+  pinctrl get "${PIN[$r]}" 2>/dev/null | grep -q '| hi' && on=true
+  apps=() 
+  if [[ -d $STATE/$r ]]; then
+    for f in "$STATE/$r"/*; do
+      [[ -e $f ]] || continue
+      p=${f##*/}
+      kill -0 "$p" 2>/dev/null || continue
+      a=$(app_of "$p"); [[ -n $a ]] && apps+=("\"${a//\"/}\"")
+    done
+  fi
+  # meshtasticd powers LoRa itself (systemd), not through aio-run
+  [[ $r == LORA ]] && systemctl is-active -q meshtasticd 2>/dev/null && apps+=('"meshtasticd"')
+  out+="$sep{\"name\":\"$r\",\"on\":$on,\"apps\":[$(IFS=,; echo "${apps[*]}")]}"
+  sep=,
+done
+b=/sys/class/power_supply/axp20x-battery
+w=$(awk '{printf "%.2f", $1/1e6}' "$b/power_now" 2>/dev/null || echo null)
+st=$(cat "$b/status" 2>/dev/null)
+cap=$(cat "$b/capacity" 2>/dev/null || echo null)
+out+="],\"watts\":${w:-null},\"charging\":$([[ $st == Charging || $st == Full ]] && echo true || echo false),\"battery\":${cap}}"
+echo "$out"

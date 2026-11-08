@@ -655,3 +655,31 @@ The uConsole's Omarchy git checkout does not install
 does on x86. Without `omarchy-theme-browser`, every theme change asks for a
 password via pkexec (for `omarchy-theme-set-browser-policy`). Install those
 narrowly scoped rules with `sudo install -m440 /usr/share/omarchy/etc/sudoers.d/* /etc/sudoers.d/`.
+
+## Bar widget: AIO radios
+
+`config/omarchy-plugin/aio-radios` is an Omarchy shell bar widget. It shows
+one standard bar icon per powered radio (SDR signal bars, GPS arrow, LoRa
+nodes), or a single dimmed icon when they are all off. The tooltip lists each
+rail, the apps holding it (from `aio-run`'s holder files, plus
+`meshtasticd`) and the battery draw.
+- Left click opens **Alt + R > AIO power**, with the on/off switches.
+- Right click opens the SDR menu.
+- Middle click opens the power monitor.
+
+It polls `scripts/sdr/aio-status` (one JSON line, about 0.1 s) every 3 s.
+
+```sh
+sudo install -m755 scripts/sdr/aio-status /usr/local/bin/
+cp -r config/omarchy-plugin/aio-radios ~/.config/omarchy/plugins/
+omarchy plugin enable aio.radios      # adds it to the right of the bar
+omarchy restart shell                 # first install only
+```
+
+Notes from building it:
+- Hot reload does not replace a widget that is already on the bar, so restart
+  the shell after the first install or a structural change.
+- Don't name a widget property `state`, because it collides with QML's
+  built-in `Item.state` string.
+- Bar slots are fixed width: a text label beside a `BarIconButton` overlaps
+  its neighbours, so use one icon per slot.

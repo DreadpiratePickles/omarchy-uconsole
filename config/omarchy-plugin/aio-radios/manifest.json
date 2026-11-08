@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "aio.radios",
+  "name": "AIO radios",
+  "version": "1.0.0",
+  "author": "omarchy-uconsole",
+  "license": "MIT",
+  "description": "HackerGadgets AIO V2 radio power (SDR, GPS, LoRa, USB) on the uConsole, with the apps holding each radio.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "AIO radios",
+    "description": "Which AIO V2 radios are powered and by which app. Left click: radio power menu. Right click: SDR menu. Middle click: power monitor.",
+    "category": "Status",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "hideWhenOff": false,
+      "interval": 3
+    },
+    "schema": [
+      {
+        "key": "hideWhenOff",
+        "type": "boolean",
+        "label": "Hide when all radios are off",
+        "defaultValue": false
+      },
+      {
+        "key": "interval",
+        "type": "integer",
+        "label": "Refresh every (seconds)",
+        "min": 1,
+        "max": 30,
+        "step": 1,
+        "defaultValue": 3
+      }
+    ]
+  }
+}
