@@ -24,6 +24,11 @@ for _ in $(seq 60); do
 done
 
 stop_if_ours() {
+  # With the external-power controller installed, it owns the node while
+  # plugged in: leave it running for the mesh.
+  if systemctl --user -q is-active meshtastic-power.timer 2>/dev/null && /usr/bin/systemd-ac-power; then
+    return 0
+  fi
   if (( ! was_running )); then
     systemctl stop meshtasticd
     notify "Meshtastic" "Node stopped, LoRa radio off"
@@ -42,7 +47,10 @@ else
   # A dedicated Chromium profile makes the window its own process, so this
   # script can tell when it is closed. Trust for the node's localhost
   # certificate lives in ~/.pki/nssdb, which every profile shares.
-  chromium --user-data-dir="$HOME/.local/share/meshtastic-web" --no-first-run \
+  # Optional extension that fills in localhost:9443 and connects on launch.
+  ext=()
+  [[ -d /usr/local/share/meshtastic-autoconnect ]] && ext=(--load-extension=/usr/local/share/meshtastic-autoconnect)
+  chromium "${ext[@]}" --user-data-dir="$HOME/.local/share/meshtastic-web" --no-first-run \
     --no-default-browser-check --disable-features=ChromeWhatsNewUI \
     --class=Meshtastic --app="$URL" >/dev/null 2>&1
 fi

@@ -1,0 +1,6 @@
+[Unit]
+Description=Reconcile Meshtastic background node with external power
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/meshtastic-power

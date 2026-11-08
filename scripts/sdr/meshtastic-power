@@ -1,0 +1,65 @@
+#!/usr/bin/python3
+"""Maintain a background Meshtastic node on external power, not battery.
+
+Run every 15 s by the meshtastic-power.timer user unit. While the uConsole is
+plugged in, it starts meshtasticd (and keeps the machine awake through
+meshtastic-relay-awake.service) so the node relays for the mesh. On battery it
+stops the node again, but only if it started it and no Meshtastic window
+(meshtastic-ui, contact) is open. Install to /usr/local/bin/meshtastic-power.
+Starting/stopping without a password needs config/aio-v2/50-meshtasticd.rules.
+"""
+from pathlib import Path
+import os
+import subprocess
+
+
+def decide(on_ac, active, owned, interactive):
+    if on_ac is True:
+        return ('none' if active else 'start', True)
+    if on_ac is None:
+        return ('none', owned)
+    if owned and active and not interactive:
+        return ('stop', False)
+    return ('none', owned and active)
+
+
+if __name__ == '__main__':
+    supplies = []
+    for supply in Path('/sys/class/power_supply').glob('*'):
+        try:
+            if (supply / 'type').read_text().strip() in ('Mains', 'USB', 'USB_C', 'USB_PD'):
+                supplies.append((supply / 'online').read_text().strip() == '1')
+        except OSError:
+            continue
+    on_ac = any(supplies) if supplies else None
+    state = Path.home() / '.local/state/meshtastic-power/owned'
+    active = subprocess.run(['systemctl', 'is-active', '--quiet', 'meshtasticd']).returncode == 0
+    interactive = False
+    launcher_names = {'meshtastic-web-local', 'meshtastic-ui', 'contact'}
+    for proc in Path('/proc').glob('[0-9]*'):
+        try:
+            if proc.stat().st_uid != os.getuid() or int(proc.name) == os.getpid():
+                continue
+            args = (proc / 'cmdline').read_bytes().split(b'\0')
+            if any(Path(a.decode(errors='replace')).name in launcher_names for a in args if a):
+                interactive = True
+                break
+        except (OSError, ValueError):
+            continue
+    action, owned = decide(on_ac, active, state.exists(), interactive)
+    if action != 'none':
+        result = subprocess.run(['systemctl', '--no-ask-password', action, 'meshtasticd'])
+        if result.returncode:
+            raise SystemExit(result.returncode)
+        print(f'{action} meshtasticd: external_power={on_ac}, interactive={interactive}', flush=True)
+    if on_ac is not None:
+        want_awake = on_ac and (active or action == 'start')
+        awake_unit = 'meshtastic-relay-awake.service'
+        awake = subprocess.run(['systemctl', '--user', 'is-active', '--quiet', awake_unit]).returncode == 0
+        if want_awake != awake:
+            subprocess.run(['systemctl', '--user', 'start' if want_awake else 'stop', awake_unit], check=True)
+    if owned:
+        state.parent.mkdir(parents=True, exist_ok=True)
+        state.touch()
+    else:
+        state.unlink(missing_ok=True)

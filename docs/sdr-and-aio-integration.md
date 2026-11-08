@@ -22,6 +22,7 @@ be fixable.
 3. [Broken aarch64 packages, and how to find them](#3-broken-aarch64-packages-and-how-to-find-them)
 4. [SDR apps that do build on aarch64](#4-sdr-apps-that-do-build-on-aarch64)
 5. [Meshtastic on the AIO V2 LoRa radio](#5-meshtastic-on-the-aio-v2-lora-radio)
+   ([GPS position](#gps-position-for-the-node), [relay while plugged in](#a-relay-while-plugged-in))
 6. [Power: radios on only while an app needs them](#6-power-radios-on-only-while-an-app-needs-them)
 7. [Omarchy integration: one key for everything](#7-omarchy-integration-one-key-for-everything)
 8. [What was tested](#8-what-was-tested)
@@ -347,6 +348,52 @@ sudo systemctl start meshtasticd
 meshtastic --host localhost --set lora.region US
 ```
 
+### GPS position for the node
+
+The AIO V2 GPS is on the CM4 UART (`/dev/ttyS0`) behind its own power rail
+(GPIO27). Give the node the port, and power the GPS with the node the same way
+as LoRa:
+
+```bash
+sudo install -Dm644 config/aio-v2/aio-v2-gps.yaml /etc/meshtasticd/config.d/aio-v2-gps.yaml
+sudo install -Dm644 config/aio-v2/meshtasticd-gps-power.conf \
+  /etc/systemd/system/meshtasticd.service.d/gps-power.conf
+sudo systemctl daemon-reload && sudo systemctl restart meshtasticd
+```
+
+gpsd is set up on the same port (`DEVICES="/dev/ttyS0"` in `/etc/default/gpsd`).
+Two programs reading one serial port each get only part of the data, so expect
+`gps-map` and the other gpsd apps to lose their fix while the node runs.
+
+The node then broadcasts your position to the mesh. To share it less exactly,
+or not at all, set the channel's position precision
+(`meshtastic --host localhost --ch-index 0 --ch-set module_settings.position_precision 13`,
+about 1.5 km), or `--set position.gps_mode DISABLED`.
+
+### A relay while plugged in
+
+A Meshtastic node is most useful when it stays on, but it would drain the
+battery. [`scripts/sdr/meshtastic-power`](../scripts/sdr/meshtastic-power),
+run every 15 seconds by a user timer, makes the uConsole a relay only while it
+is on external power:
+
+- **Plugged in:** starts `meshtasticd` and starts `meshtastic-relay-awake.service`,
+  which holds a sleep inhibitor so the node keeps relaying.
+- **On battery:** stops the node again, if it started it and no Meshtastic
+  window (`meshtastic-ui`, `contact`) is open, and lets the machine sleep.
+- A node you started yourself is left alone.
+
+```bash
+sudo install -m755 scripts/sdr/meshtastic-power /usr/local/bin/
+install -Dm644 -t ~/.config/systemd/user/ \
+  config/meshtastic/meshtastic-power.service config/meshtastic/meshtastic-power.timer \
+  config/meshtastic/meshtastic-relay-awake.service
+systemctl --user daemon-reload && systemctl --user enable --now meshtastic-power.timer
+```
+
+It needs `50-meshtasticd.rules` (above) to start and stop the service without a
+password. Leave `meshtasticd` itself disabled at boot; the timer decides.
+
 ---
 
 ## 6. Power: radios on only while an app needs them
@@ -479,11 +526,19 @@ Notes:
   Chromium's terms dialog instead of the app.
 - With Hyprland's Lua config, `hyprctl dispatch exec ...` no longer works.
   Scripts must use `hyprctl dispatch 'hl.dsp.exec_cmd("…")'`.
+- The web client opens on a "New Connection" form each time. The small Chromium
+  extension in [`scripts/sdr/meshtastic-autoconnect/`](../scripts/sdr/meshtastic-autoconnect)
+  fills in `localhost:9443` and connects. It only runs on `https://localhost:9443`
+  and `https://127.0.0.1:9443`. `meshtastic-ui` loads it when it is installed in
+  `/usr/local/share/meshtastic-autoconnect`.
+- With the relay timer installed ([above](#a-relay-while-plugged-in)), closing
+  the window while plugged in leaves the node running for the mesh.
 
 ### Install
 
 ```bash
 sudo install -m755 scripts/sdr/{aio-run,sdr-launch,sdr-tool,gps-map,meshtastic-ui} /usr/local/bin/
+sudo install -Dm644 -t /usr/local/share/meshtastic-autoconnect/ scripts/sdr/meshtastic-autoconnect/*   # optional
 pipx install "pyModeS<3"
 bash scripts/sdr/sdr-omarchy-integration.sh      # as the desktop user
 ```

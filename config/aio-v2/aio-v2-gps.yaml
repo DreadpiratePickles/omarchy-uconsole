@@ -1,0 +1,3 @@
+# AIO V2 GPS module on the CM4 UART (power rail GPIO27, see gps-power.conf)
+GPS:
+  SerialPath: /dev/ttyS0

@@ -1,0 +1,8 @@
+[Unit]
+Description=Keep the plugged-in Meshtastic relay awake
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/systemd-inhibit --what=sleep --mode=block --who=Meshtastic --why=Relaying-on-external-power /usr/bin/sleep infinity
+Restart=on-failure
+RestartSec=15s

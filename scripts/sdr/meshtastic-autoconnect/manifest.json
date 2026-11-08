@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "Meshtastic Local Node Auto-connect",
+  "version": "1.0.0",
+  "description": "Connect the dedicated local web client to localhost:9443 on launch.",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://localhost/*",
+        "https://127.0.0.1/*"
+      ],
+      "js": [
+        "autoconnect.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

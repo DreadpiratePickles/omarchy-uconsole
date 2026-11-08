@@ -458,7 +458,22 @@ rest of a complete SDR build:
 - SDR++, CHIRP and meshtasticd on aarch64;
 - an Omarchy SDR menu with AIO power toggles on Alt + R;
 - the agent CLIs (Claude Code, Codex, gh) via mise;
-- building the whole card offline.
+- building the whole card offline;
+- Meshtastic with GPS position, and as a relay while plugged in;
+- the AIO radios bar widget.
+
+---
+
+## Desktop fixes
+
+[docs/desktop-fixes.md](docs/desktop-fixes.md) covers problems that show up once
+the desktop is running:
+- the keyring asking for a password after every boot (autologin), and moving it
+  to a password-less one without losing saved secrets;
+- two gnome-keyring daemons racing at login;
+- running `omarchy` and `hyprctl` commands over SSH;
+- restarting the shell after updating a bar plugin;
+- remote access with Tailscale.
 
 ---
 

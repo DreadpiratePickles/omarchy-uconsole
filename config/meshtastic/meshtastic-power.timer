@@ -1,0 +1,11 @@
+[Unit]
+Description=Check external power for Meshtastic every 15 seconds
+
+[Timer]
+OnBootSec=15s
+OnUnitActiveSec=15s
+AccuracySec=1s
+Unit=meshtastic-power.service
+
+[Install]
+WantedBy=timers.target
