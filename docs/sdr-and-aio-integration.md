@@ -645,7 +645,7 @@ four build and run on the CM4):
   Tailscale addresses to use with SDR++'s RTL-TCP source. It is unauthenticated,
   so only run it on networks you trust.
 
-Tested: the aircraft map showed traffic over New York within 25 s; AIS-catcher
+Tested: the aircraft map showed nearby traffic within 25 s; AIS-catcher
 started and served its map; an rtl_tcp client on another machine received the
 `RTL0` header (R820T, 29 gains) and a live sample stream. Each one powered the
 SDR on while running and off again afterwards.
@@ -658,28 +658,22 @@ narrowly scoped rules with `sudo install -m440 /usr/share/omarchy/etc/sudoers.d/
 
 ## Bar widget: AIO radios
 
-`config/omarchy-plugin/aio-radios` is an Omarchy shell bar widget. It shows
-one standard bar icon per powered radio (SDR signal bars, GPS arrow, LoRa
-nodes), or a single dimmed icon when they are all off. The tooltip lists each
-rail, the apps holding it (from `aio-run`'s holder files, plus
-`meshtasticd`) and the battery draw.
-- Left click opens **Alt + R > AIO power**, with the on/off switches.
-- Right click opens the SDR menu.
-- Middle click opens the power monitor.
+The **AIO radios** Omarchy bar widget lives in its own repo,
+[laird/aio-widget](https://github.com/laird/aio-widget). It shows one standard
+bar icon per powered radio (SDR, GPS, LoRa), or a single dimmed icon when they
+are all off. Its tooltip lists each rail, the apps holding it and the battery
+draw. Left click opens **Alt + R > AIO power**, right click opens the SDR menu,
+and middle click opens the power monitor.
 
-It polls `scripts/sdr/aio-status` (one JSON line, about 0.1 s) every 3 s.
+It reads `scripts/sdr/aio-status` from this repo, which prints one JSON line
+(about 0.1 s): the rail states from the AIO's GPIO pins, the holders recorded
+by `aio-run`, `meshtasticd` for LoRa, and the battery draw from the AXP PMIC.
 
 ```sh
 sudo install -m755 scripts/sdr/aio-status /usr/local/bin/
-cp -r config/omarchy-plugin/aio-radios ~/.config/omarchy/plugins/
-omarchy plugin enable aio.radios      # adds it to the right of the bar
-omarchy restart shell                 # first install only
+git clone https://github.com/laird/aio-widget.git
+mkdir -p ~/.config/omarchy/plugins/aio-radios
+cp aio-widget/{manifest.json,Widget.qml,Model.js} ~/.config/omarchy/plugins/aio-radios/
+omarchy bar put aio.radios
+omarchy restart shell        # first install, and after updates
 ```
-
-Notes from building it:
-- Hot reload does not replace a widget that is already on the bar, so restart
-  the shell after the first install or a structural change.
-- Don't name a widget property `state`, because it collides with QML's
-  built-in `Item.state` string.
-- Bar slots are fixed width: a text label beside a `BarIconButton` overlaps
-  its neighbours, so use one icon per slot.
