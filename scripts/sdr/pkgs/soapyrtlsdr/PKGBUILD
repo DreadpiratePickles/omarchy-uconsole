@@ -1,0 +1,37 @@
+# Arch soapyrtlsdr rebuilt against the current rtl-sdr. The ALARM build links
+# librtlsdr.so.2, but rtl-sdr 2.0.3 ships SONAME librtlsdr.so.0, so SoapySDR
+# silently cannot use the RTL-SDR (dump1090_rs, SigDigger, ...).
+# Maintainer: Filipe Laíns (FFY00) <lains@archlinux.org>
+
+pkgname=soapyrtlsdr
+_pkgname=SoapyRTLSDR
+pkgver=0.3.3
+_gitver=soapy-rtl-sdr-$pkgver
+pkgrel=4
+pkgdesc='Soapy SDR plugin for RTL-SDR devices'
+arch=(aarch64)
+url='https://github.com/pothosware/SoapyRTLSDR'
+license=('MIT')
+depends=('soapysdr' 'rtl-sdr')
+makedepends=('cmake')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/$_gitver.tar.gz")
+sha512sums=('a43511c8644a8dbec8e0b7d8f114c4955ba9407727680680cef446a12a9ee27bfe892cab49aa77ce82d52e4272075f4e6f2ee38350675f5508601ff24ff82081')
+
+build() {
+  mkdir -p $_pkgname-$_gitver/build
+  cd $_pkgname-$_gitver/build
+
+  cmake .. \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+  make
+}
+
+package() {
+  cd $_pkgname-$_gitver/build
+
+  make DESTDIR="$pkgdir" install
+
+  install -Dm 644 "$srcdir"/$_pkgname-$_gitver/LICENSE.txt "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+}

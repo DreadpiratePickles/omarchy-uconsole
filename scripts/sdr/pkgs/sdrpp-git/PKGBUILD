@@ -1,0 +1,44 @@
+# aarch64 build of SDR++ for the uConsole.
+# Derived from AUR sdrpp-git (Alexandre Rouma, éclairevoyant), which declares
+# x86_64 only. Modules whose libraries are not packaged for aarch64
+# (SDRplay, Airspy HF+) are disabled; everything else uses ALARM packages.
+_pkgname=sdrpp
+pkgname="$_pkgname-git"
+pkgver=1.0.4.r0
+pkgrel=1
+pkgdesc="The bloat-free SDR receiver (aarch64 build)"
+arch=(aarch64)
+url="https://www.sdrpp.org/"
+license=(GPL-3.0-only)
+depends=(fftw glew glfw libvolk zstd rtl-sdr hackrf airspy bladerf limesuite
+         libiio libad9361 soapysdr rtaudio portaudio codec2)
+makedepends=(cmake git)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+_commit=ea6f755ac9f746cb05e34238ec5d69e5c5d17da8
+source=("$_pkgname::git+https://github.com/AlexandreRouma/SDRPlusPlus.git#commit=${_commit}")
+b2sums=('SKIP')
+
+pkgver() {
+	git -C $_pkgname describe --long --tags --exclude nightly | sed 's/\([^-]*-\)g/r\1/;s/-/./g'
+}
+
+build() {
+	cmake -B build -S $_pkgname \
+		-DCMAKE_BUILD_TYPE=Release \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DOPT_BUILD_AIRSPYHF_SOURCE=OFF \
+		-DOPT_BUILD_SDRPLAY_SOURCE=OFF \
+		-DOPT_BUILD_BLADERF_SOURCE=ON \
+		-DOPT_BUILD_LIMESDR_SOURCE=ON \
+		-DOPT_BUILD_SOAPY_SOURCE=ON \
+		-DOPT_BUILD_NEW_PORTAUDIO_SINK=ON \
+		-DOPT_BUILD_M17_DECODER=ON \
+		-DOPT_BUILD_DISCORD_PRESENCE=OFF \
+		-DCMAKE_POLICY_VERSION_MINIMUM=3.5
+	make -C build -j"$(nproc)"
+}
+
+package() {
+	make -C build DESTDIR="$pkgdir" install
+}

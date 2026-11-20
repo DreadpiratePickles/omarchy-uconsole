@@ -1,0 +1,50 @@
+#!/bin/bash
+# bt-tether-auto: use a phone's Bluetooth tether only when there is no other
+# network. Finds any paired phone that offers internet sharing (Bluetooth NAP,
+# e.g. iPhone Personal Hotspot), creates a NetworkManager connection for it,
+# brings it up when Wi-Fi/USB/Ethernet are all down and drops it again as soon
+# as one of them is back. Run by the NetworkManager dispatcher on every network
+# change and by bt-tether-auto.timer every minute (for a phone coming in range).
+# Install to /usr/local/bin/bt-tether-auto.
+set -u
+exec 9>/run/bt-tether-auto.lock; flock -n 9 || exit 0
+NAP=00001116-0000-1000-8000-00805f9b34fb
+
+# Is there a working default route that isn't a Bluetooth tether?
+other_net() {
+  nmcli -t -f TYPE,STATE,DEVICE connection show --active |
+    awk -F: '$2=="activated" && $1!="bluetooth" && $1!="loopback" && $3!="tailscale0" && $3!="lo" {f=1} END {exit !f}'
+}
+tether_active() { nmcli -t -f TYPE connection show --active | grep -qx bluetooth; }
+
+if other_net; then
+  tether_active && nmcli -t -f NAME,TYPE connection show --active |
+    awk -F: '$2=="bluetooth" {print $1}' | while read -r c; do nmcli connection down "$c" >/dev/null; done
+  exit 0
+fi
+tether_active && exit 0
+
+systemctl is-active -q bluetooth || exit 0
+bluetoothctl show 2>/dev/null | grep -q "Powered: yes" || exit 0
+
+# Paired devices offering NAP, most recently used connection first
+for mac in $(bluetoothctl devices Paired | awk '{print $2}'); do
+  info=$(bluetoothctl info "$mac")
+  grep -q "$NAP" <<<"$info" || continue
+  grep -q "Trusted: yes" <<<"$info" || bluetoothctl trust "$mac" >/dev/null
+  id=""
+  for c in $(nmcli -t -f UUID,TYPE connection show | awk -F: '$2=="bluetooth"{print $1}'); do
+    [[ $(nmcli -g bluetooth.bdaddr connection show "$c" | tr -d "\\\\") == "$mac" ]] && id=$c && break
+  done
+  if [[ -z $id ]]; then
+    dev=$(sed -n 's/^\s*Name: //p' <<<"$info" | head -1)
+    nmcli connection add type bluetooth con-name "${dev:-phone} tether" bt-type panu \
+      bluetooth.bdaddr "$mac" connection.autoconnect no ipv4.route-metric 900 >/dev/null || continue
+    id=$(nmcli -t -f UUID,NAME connection show | awk -F: -v n="${dev:-phone} tether" '$2==n{print $1; exit}')
+  fi
+  if timeout 25 nmcli connection up "$id" >/dev/null 2>&1; then
+    logger -t bt-tether-auto "no other network: tethered via $mac"
+    exit 0
+  fi
+done
+exit 0

@@ -1,0 +1,56 @@
+#!/bin/bash
+# meshtastic-ui: one-click Meshtastic on the AIO V2.
+#   - starts meshtasticd (its drop-in powers the LoRa rail; stopping cuts it)
+#   - waits for the node API, then opens the node's own web client
+#   - when the window closes, stops the node again, unless it was already
+#     running before (e.g. enabled at boot or started from the menu)
+#   meshtastic-ui --tui   use the meshtastic CLI in a terminal instead
+# Install to /usr/local/bin/meshtastic-ui. Starting/stopping the service without
+# a password needs the polkit rule in config/aio-v2/50-meshtasticd.rules.
+set -u
+URL=https://localhost:9443/
+notify() { omarchy-notification-send "$@" >/dev/null 2>&1 || true; }
+
+was_running=0
+systemctl is-active -q meshtasticd && was_running=1
+if (( ! was_running )); then
+  notify "Meshtastic" "Powering LoRa radio and starting node…"
+  systemctl start meshtasticd || { notify -u critical "Meshtastic" "meshtasticd failed to start"; exit 1; }
+fi
+
+for _ in $(seq 60); do
+  (exec 3<>/dev/tcp/127.0.0.1/4403) 2>/dev/null && break
+  sleep 0.5
+done
+
+stop_if_ours() {
+  # With the external-power controller installed, it owns the node while
+  # plugged in: leave it running for the mesh.
+  if systemctl --user -q is-active meshtastic-power.timer 2>/dev/null && /usr/bin/systemd-ac-power; then
+    return 0
+  fi
+  if (( ! was_running )); then
+    systemctl stop meshtasticd
+    notify "Meshtastic" "Node stopped, LoRa radio off"
+  fi
+}
+trap stop_if_ours EXIT
+trap 'exit 130' INT TERM HUP
+
+if [[ ${1:-} == --tui ]]; then
+  M="$HOME/.local/bin/meshtastic"
+  "$M" --host localhost --info | sed -n '1,/^Nodes/p'
+  echo; echo "Node is running. Commands: meshtastic --host localhost --nodes | --sendtext \"…\""
+  echo "Close this window (or exit) to stop the node."
+  PATH="$HOME/.local/bin:$PATH" bash -i
+else
+  # A dedicated Chromium profile makes the window its own process, so this
+  # script can tell when it is closed. Trust for the node's localhost
+  # certificate lives in ~/.pki/nssdb, which every profile shares.
+  # Optional extension that fills in localhost:9443 and connects on launch.
+  ext=()
+  [[ -d /usr/local/share/meshtastic-autoconnect ]] && ext=(--load-extension=/usr/local/share/meshtastic-autoconnect)
+  chromium "${ext[@]}" --user-data-dir="$HOME/.local/share/meshtastic-web" --no-first-run \
+    --no-default-browser-check --disable-features=ChromeWhatsNewUI \
+    --class=Meshtastic --app="$URL" >/dev/null 2>&1
+fi

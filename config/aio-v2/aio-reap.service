@@ -1,0 +1,7 @@
+# User unit: install to ~/.config/systemd/user/ with aio-reap.timer
+[Unit]
+Description=Switch off AIO V2 rails left on by an interrupted aio-run
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aio-run --reap

@@ -1,0 +1,3 @@
+Webserver:
+  Port: 9443
+  RootPath: /usr/share/meshtasticd/web

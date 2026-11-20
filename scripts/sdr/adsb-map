@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""adsb-map: live aircraft map (readsb + tar1090) for the uConsole AIO V2 SDR.
+
+Starts readsb on the RTL-SDR, writing aircraft.json to a private runtime
+directory, serves the tar1090 web UI plus that data on 127.0.0.1, and opens it
+in its own Chromium app window. If gpsd has a fix, the receiver position comes
+from the GPS (range rings, distances). Closing the window stops readsb, and
+aio-run then powers the SDR down.
+
+    sdr-launch adsb-map SDR -- adsb-map
+Needs /usr/local/bin/readsb (wiedehopf/readsb, make RTLSDR=yes) and the
+tar1090 html directory at /usr/local/share/tar1090/html.
+"""
+import functools
+import json
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import threading
+
+HTML = "/usr/local/share/tar1090/html"
+READSB = shutil.which("readsb") or "/usr/local/bin/readsb"
+
+
+def gps_fix(timeout=4):
+    """(lat, lon) from gpsd if it already has a fix, else None."""
+    try:
+        with socket.create_connection(("127.0.0.1", 2947), timeout=timeout) as s:
+            s.sendall(b'?WATCH={"enable":true,"json":true};\n')
+            s.settimeout(timeout)
+            buf = b""
+            end = time.monotonic() + timeout
+            while time.monotonic() < end:
+                chunk = s.recv(65536)
+                if not chunk:
+                    return None
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    try:
+                        m = json.loads(line)
+                    except ValueError:
+                        continue
+                    if m.get("class") == "TPV" and m.get("mode", 0) >= 2 and "lat" in m:
+                        return m["lat"], m["lon"]
+    except OSError:
+        pass
+    return None
+
+
+class Handler(SimpleHTTPRequestHandler):
+    data_dir = None
+
+    def log_message(self, *a):
+        pass
+
+    def translate_path(self, path):
+        p = path.split("?", 1)[0].split("#", 1)[0]
+        if p.startswith("/data/"):
+            return os.path.join(self.data_dir, os.path.basename(p))
+        return super().translate_path(path)
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+
+def main():
+    data = tempfile.mkdtemp(prefix="adsb-", dir=os.environ.get("XDG_RUNTIME_DIR"))
+    cmd = [READSB, "--device-type=rtlsdr", "--gain=auto", "--quiet",
+           f"--write-json={data}", "--write-json-every=1", "--json-location-accuracy=2"]
+    pos = gps_fix()
+    if pos:
+        cmd += [f"--lat={pos[0]:.5f}", f"--lon={pos[1]:.5f}"]
+    rs = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    Handler.data_dir = data
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Handler, directory=HTML))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}/"
+
+    def stop(*_):
+        rs.terminate()
+        try:
+            rs.wait(5)
+        except subprocess.TimeoutExpired:
+            rs.kill()
+        shutil.rmtree(data, ignore_errors=True)
+
+    signal.signal(signal.SIGTERM, lambda *a: (stop(), sys.exit(0)))
+    try:
+        if "--no-browser" in sys.argv:
+            print(url, flush=True)
+            rs.wait()
+            return
+        profile = os.path.expanduser("~/.local/share/adsb-map-web")
+        subprocess.call(["chromium", f"--user-data-dir={profile}", "--no-first-run",
+                         "--no-default-browser-check", f"--app={url}"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    finally:
+        stop()
+        srv.shutdown()
+
+
+if __name__ == "__main__":
+    main()

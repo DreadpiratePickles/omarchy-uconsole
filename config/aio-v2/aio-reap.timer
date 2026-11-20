@@ -1,0 +1,11 @@
+# User unit: systemctl --user enable --now aio-reap.timer
+[Unit]
+Description=Periodically reap orphaned AIO V2 rails
+
+[Timer]
+OnStartupSec=30
+OnUnitActiveSec=60
+AccuracySec=15
+
+[Install]
+WantedBy=timers.target

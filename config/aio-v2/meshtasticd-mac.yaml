@@ -1,0 +1,4 @@
+# Derive the node ID from the Wi-Fi MAC; without a MAC source every
+# meshtasticd node gets the same ID (!aaaaaaaa) and they collide on the mesh.
+General:
+  MACAddressSource: wlan0

@@ -1,0 +1,25 @@
+#!/bin/bash
+# sdr-launch PROC RAILS -- command [args...]
+# Single-instance launcher for hardware apps. If a process named PROC is
+# already running, focus its window (or say it is still starting) instead of
+# starting a second copy, which would fight the first for the radio and, for
+# SDR++, for its config lock. Otherwise run the command under aio-run so the
+# AIO rails are powered only while it runs.
+# Install to /usr/local/bin/sdr-launch.
+set -u
+[[ $# -ge 4 && $3 == -- ]] || { echo "usage: sdr-launch PROC RAILS -- command [args...]" >&2; exit 2; }
+proc=$1 rails=$2
+shift 3
+
+# Python apps (xgps, urh...) run as "python /usr/bin/NAME"
+if pid=$(pgrep -nx "$proc" || pgrep -nf "^python[0-9.]* [^ ]*/$proc( |$)"); then
+  addr=$(hyprctl clients -j 2>/dev/null | jq -r --argjson p "$pid" '[.[] | select(.pid == $p)][0].address // empty')
+  if [[ -n $addr ]]; then
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$addr\" })" >/dev/null 2>&1
+  else
+    omarchy-notification-send "$proc is already starting" "It can take ~15 s to load on the CM4" >/dev/null 2>&1 || true
+  fi
+  exit 0
+fi
+
+exec aio-run "$rails" -- "$@"

@@ -12,7 +12,10 @@ fi
 echo "==> Linking omarchy-* commands onto PATH"
 sudo mkdir -p /usr/local/bin
 for f in "$DEST"/bin/*; do
-  [ -f "$f" ] && sudo ln -sf "$f" "/usr/local/bin/$(basename "$f")"
+  [ -f "$f" ] || continue
+  sudo ln -sf "$f" "/usr/local/bin/$(basename "$f")"
+  # Several Omarchy scripts call siblings by absolute /usr/bin path.
+  [ -e "/usr/bin/$(basename "$f")" ] || sudo ln -sf "$f" "/usr/bin/$(basename "$f")"
 done
 
 echo "==> Installing system profile + session files"
@@ -20,6 +23,11 @@ sudo install -Dm644 "$DEST/etc/profile.d/omarchy.sh" /etc/profile.d/omarchy.sh
 sudo install -Dm644 "$DEST/default/uwsm/env.d/10-omarchy" /usr/share/uwsm/env.d/10-omarchy
 sudo mkdir -p /usr/share/wayland-sessions
 sudo cp "$DEST"/default/wayland-sessions/*.desktop /usr/share/wayland-sessions/ 2>/dev/null || true
+
+echo "==> Installing Omarchy's systemd user units (the package would; see docs/updating.md)"
+if [ -d "$DEST/default/systemd/user" ]; then
+  sudo cp -r "$DEST/default/systemd/user/." /usr/lib/systemd/user/
+fi
 
 echo "==> Seeding user configs (existing files preserved)"
 mkdir -p "$HOME/.config"

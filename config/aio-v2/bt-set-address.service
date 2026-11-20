@@ -1,0 +1,13 @@
+# Install to /etc/systemd/system/, then: sudo systemctl enable bt-set-address
+[Unit]
+Description=CM4 Bluetooth: unique address, and headset (SCO) audio over HCI
+After=bluetooth.service sys-subsystem-bluetooth-devices-hci0.device
+Requires=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/bt-set-address
+ExecStart=/usr/local/bin/bt-sco-hci
+
+[Install]
+WantedBy=bluetooth.target
